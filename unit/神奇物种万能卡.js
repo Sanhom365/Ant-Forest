@@ -345,7 +345,7 @@ function doCollectCards () {
 function browseAds () {
   logFloaty.pushLog('准备逛商品')
   sleep(1000)
-  let limit = 20, end = false
+  let limit = 20, end = false, closed = false
   while (--limit > 0 && !end) {
     if (limit % 2 == 0) {
       automator.randomScrollDown()
@@ -353,9 +353,27 @@ function browseAds () {
       automator.randomScrollUp()
     }
     logFloaty.replaceLastLog('逛商品 剩余：' + limit + 's')
-    end = widgetUtils.widgetWaiting('任务完成返回领奖', 1000)
+    if (!closed) {
+      closed = checkAndCloseDialog()
+    } else {
+      end = widgetUtils.widgetWaiting('任务完成返回领奖', 1000)
+    }
   }
   automator.back()
+}
+
+function checkAndCloseDialog() {
+  LogFloaty.pushLog('检查是否有关闭弹窗按钮')
+  let centerCloseBtn = selector().clickable().filter(node => {
+    let bd = node.bounds()
+    return bd.width() / bd.height() == 1 && bd.centerX() >= config.device_width / 2 && bd.centerY() > config.device_height / 2
+  }).findOne(1000)
+  if (centerCloseBtn) {
+    LogFloaty.pushLog('找到关闭弹窗按钮')
+    centerCloseBtn.click()
+    return true
+  }
+  return false
 }
 
 function ocrWait (targetContent, region, tryTime) {

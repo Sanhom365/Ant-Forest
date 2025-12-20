@@ -334,7 +334,7 @@ StrollScanner.prototype.checkAndCollectRain = function () {
     }
     sleep(1000)
     debugInfo('找到能量雨开始标志，准备自动执行能量雨脚本')
-    if (/去收取/.test(target.content)) {
+    if (/去(收取|拯救)/.test(target.content)) {
       WarningFloaty.clearAll()
       automator.clickCenter(target.target)
       sleep(1000)

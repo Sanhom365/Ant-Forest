@@ -2,7 +2,7 @@
  * @Author: NickHopps
  * @Date: 2019-01-31 22:58:00
  * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2025-08-24 11:18:08
+ * @Last Modified time: 2025-12-20 15:11:12
  * @Description: 
  */
 let { config: _config, storage_name: _storage_name } = require('../config.js')(runtime, global)
@@ -146,7 +146,7 @@ function Ant_forest () {
     threads.start(function () {
       let floatyClose = descMatches('关闭蒙层|开心收下|关闭弹窗').findOne(_config.timeout_findOne)
       if (floatyClose) {
-        debugInfo(['关闭蒙层：{}', floatyClose.text()||floatyClose.desc()])
+        debugInfo(['关闭蒙层：{}', floatyClose.text() || floatyClose.desc()])
         floatyClose.click()
       }
       dispose.setAndNotify(!!floatyClose)
@@ -541,12 +541,27 @@ function Ant_forest () {
     randomScrollUp()
   }
 
+  function findAndClickMyFriendList () {
+    let energyRank = _widgetUtils.widgetGetById('rank-tab-energyRank', 1000)
+    if (energyRank) {
+      debugInfo(['通过ID找到今日能量榜按钮 点击切换榜单: {}', energyRank.text()])
+      energyRank.click()
+      return
+    }
+    let showFriendList = _widgetUtils.widgetGetOne('.*(今日|本周|总)能量榜.*', 1000)
+    if (showFriendList) {
+      debugInfo(['通过文案找到今日能量榜按钮 点击切换榜单: {}', showFriendList.text()])
+      showFriendList.click()
+    }
+  }
+
   function enterFriendList () {
     // 测试点，部分用户反馈无法获取到控件了，尝试OCR识别
     let test = false
     let limit = 5
     do {
       randomScrollDown()
+      findAndClickMyFriendList()
     } while (--limit > 0 && (test || !_widgetUtils.widgetChecking(_config.enter_friend_list_ui_content || '.*查看更多好友.*', { algorithm: 'PDFS', timeoutSetting: 1000 })))
     sleep(500)
     let moreFriends = _widgetUtils.widgetGetOne(_config.enter_friend_list_ui_content || '.*查看更多好友.*')
@@ -732,6 +747,10 @@ function Ant_forest () {
     if (_commonFunctions.checkMagicCollected()) {
       return
     }
+    if (_config.disable_magic_species) {
+      logFloaty.pushLog('已关闭神奇物种收集，如需要请手动开启对应功能')
+      return
+    }
     logFloaty.pushLog('执行神奇物种签到')
     /* 支付宝又把入口删了
     if (_group_execute_mode) {
@@ -770,6 +789,10 @@ function Ant_forest () {
   }
 
   function trySignUpForMagicSpeciesByStroll () {
+    if (_config.disable_magic_species) {
+      logFloaty.pushLog('已关闭神奇物种收集，如需要请手动开启对应功能')
+      return
+    }
     let find = _widgetUtils.widgetGetOne(_config.magic_species_text_in_stroll || '.*神奇物种新图鉴.*', 1000)
     if (find) {
       automator.clickCenter(find)
@@ -906,8 +929,6 @@ function Ant_forest () {
     YoloTrainHelper.saveImage(_commonFunctions.captureScreen(), '进入个人首页', 'home', _config.save_home_train_data)
     // 校验是否使用了双击卡
     _widgetUtils.checkIsDuplicateCardUsed()
-    // 神奇物种签到 改到逛一逛结束
-    // signUpForMagicSpecies()
     // 组队模式 不进行合种浇水 也不进行能量值获取
     if (!_group_execute_mode) {
       // 执行合种浇水

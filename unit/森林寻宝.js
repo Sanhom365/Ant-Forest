@@ -101,6 +101,28 @@ let clickButtons = new SimpleFloatyButton('clickBalls', [
     onClick: function () {
       getCodeAndOpen(CATEGORY)
       getCodeAndOpen(CATEGORY2)
+      clickButtons.changeButtonStyle('getMutualCode', null, '#FF753A')
+      let eventTabs = checkHasEvent()
+      if (eventTabs && eventTabs.length > 1) {
+        eventTabs[0].click()
+        LogFloaty.pushLog('切换默认界面自动抽奖')
+        // 自动领取，然后自动执行逛一逛
+        clickButtons.changeButtonText('getMutualCode', '执行逛一逛...')
+        doAutoCollect()
+        clickButtons.changeButtonText('getMutualCode', '抽奖中...')
+        doDraw()
+        LogFloaty.pushLog('切换活动界面自动抽奖')
+        eventTabs[1].click()
+        clickButtons.changeButtonText('getMutualCode', '执行逛一逛...')
+        doAutoCollect()
+        clickButtons.changeButtonText('getMutualCode', '抽奖中...')
+        doDraw()
+      } else {
+        clickButtons.changeButtonText('getMutualCode', '执行逛一逛...')
+        doAutoCollect()
+        clickButtons.changeButtonText('getMutualCode', '抽奖中...')
+        doDraw()
+      }
     }
   },
   {
@@ -189,16 +211,25 @@ if (executeByTimeTask) {
   getCodeAndOpen(CATEGORY)
   getCodeAndOpen(CATEGORY2)
   clickButtons.changeButtonStyle('getMutualCode', null, '#FF753A')
-  clickButtons.changeButtonText('getMutualCode', '抽奖中...')
   let eventTabs = checkHasEvent()
   if (eventTabs && eventTabs.length > 1) {
     eventTabs[0].click()
     LogFloaty.pushLog('切换默认界面自动抽奖')
+    // 自动领取，然后自动执行逛一逛
+    clickButtons.changeButtonText('getMutualCode', '执行逛一逛...')
+    doAutoCollect()
+    clickButtons.changeButtonText('getMutualCode', '抽奖中...')
     doDraw()
     LogFloaty.pushLog('切换活动界面自动抽奖')
     eventTabs[1].click()
+    clickButtons.changeButtonText('getMutualCode', '执行逛一逛...')
+    doAutoCollect()
+    clickButtons.changeButtonText('getMutualCode', '抽奖中...')
     doDraw()
   } else {
+    clickButtons.changeButtonText('getMutualCode', '执行逛一逛...')
+    doAutoCollect()
+    clickButtons.changeButtonText('getMutualCode', '抽奖中...')
     doDraw()
   }
   clickButtons.changeButtonText('getMutualCode', '获取互助码并打开')
@@ -385,9 +416,6 @@ function getCodeAndOpen (category) {
           return getCodeAndOpen(category)
         } else {
           LogFloaty.pushLog('未能找到 助力成功 可能已经到达上限')
-          // 自动领取，然后自动执行逛一逛
-          clickButtons.changeButtonText('getMutualCode', '执行逛一逛...')
-          doAutoCollect(category)
         }
       } else {
         LogFloaty.pushLog('未能找到 帮ta助力 可能已经到达上限')
@@ -395,26 +423,16 @@ function getCodeAndOpen (category) {
     }
   } else {
     toastLog('获取互助码失败' + result.error)
-    doAutoCollect(category)
   }
   clickButtons.changeButtonText('getMutualCode', '获取互助码并打开')
   clickButtons.changeButtonStyle('getMutualCode', null, '#3FBE7B')
 }
 
-function doAutoCollect (category) {
+function doAutoCollect () {
 
   LogFloaty.pushLog('准备自动执行森林集市逛一逛')
   let target = widgetUtils.widgetGetOne('去森林市集逛一逛', 1000)
   let limit = 2
-  let tabs = checkHasEvent()
-  if (tabs && tabs.length > 0) {
-    LogFloaty.pushLog('检测到当前存在活动tab，切换回指定的tab继续')
-    if (category == CATEGORY) {
-      tabs[0].click()
-    } else {
-      tabs[1].click()
-    }
-  }
   while (target && limit-- > 0) {
     let container = target.parent().parent()
     target = widgetUtils.subWidgetGetOne(container, '去逛逛', 1000)

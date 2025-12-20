@@ -314,6 +314,8 @@ const CollectConfig = {
         duplicate_card_using_time_ranges: '00:00-00:10',
         // 使用一键收
         use_one_key_collect: false,
+        // 关闭神奇物种收集功能
+        disable_magic_species: true,
       },
       currentInCoolDown: false,
       currentCollected: 0,
@@ -521,6 +523,7 @@ const CollectConfig = {
         <switch-cell title="使用一键收" v-model="configs.use_one_key_collect" />
         <switch-cell title="逛一逛结束是否执行能量雨" v-model="configs.collect_rain_when_stroll" />
         <switch-cell title="是否限制0:30-6:50不可运行" title-style="flex:2;" v-model="configs.limit_runnable_time_range" />
+        <switch-cell title="关闭自动执行神奇物种" v-model="configs.disable_magic_species" />
       </van-cell-group>
     </div>
   `
