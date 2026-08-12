@@ -125,6 +125,7 @@ const StrollScanner = function () {
               // 直接点击中间位置
               automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
               sleep(500)
+              WarningFloaty.clearAll()   // 清除可能的悬浮标记
               firstEntry = false   // 下次循环将走滑动分支
           } else {
               // ====== 后续切换：使用上划屏幕 ======
@@ -137,7 +138,6 @@ const StrollScanner = function () {
               let endY = screenHeight * 0.1     // 滑到上方10%处
               swipe(startX, startY, endX, endY, 400)   // 持续600ms
               sleep(500)   // 等待惯性滚动和加载
-              WarningFloaty.clearAll()   // 清除可能的悬浮标记
           }
           // 执行好友能量收集（原有逻辑不变）
           hasNext = this.collectTargetFriend()
