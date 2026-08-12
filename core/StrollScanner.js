@@ -2,8 +2,8 @@
  * @Author: TonyJiangWJ
  * @Date: 2020-09-07 13:06:32
  * @Last Modified by: Sanhom365
- * @Last Modified time: 2026-08-12 14:25:00
- * @Description: 逛一逛收集器
+ * @Last Modified time: 2026-08-12 15:00:00
+ * @Description: 逛一逛收集器 (适配上划巡航与无逛一逛按钮模式)
  */
 let { config: _config, storage_name: _storage_name } = require('../config.js')(runtime, global)
 let singletonRequire = require('../lib/SingletonRequirer.js')(runtime, global)
@@ -50,7 +50,6 @@ const DuplicateChecker = function () {
       exist = { name: obj.name, count: 1 }
     }
     this.duplicateChecked[obj.name] = exist
-
   }
 
   /**
@@ -91,61 +90,67 @@ const StrollScanner = function () {
 
   /**
    * 执行收集操作
-   * 
-   * @return { true } if failed
-   * @return { minCountdown, lostSomeone } if successful
    */
   this.collecting = function () {
-      let hasNext = true
-      let region = null
-      // 原有获取逛一逛按钮区域的逻辑（不变）
-      if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
-          region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
+    let hasNext = true
+    let region = null
+
+    // 仅在自己的森林主页寻找“逛一逛”按钮（用于进入第1个好友）
+    if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
+      region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
+    } else {
+      let successful = regenerateStrollButton()
+      if (!successful) {
+        warnInfo('自动识别逛一逛按钮失败，请主动配置区域或者图片信息', true)
+        hasNext = false
       } else {
-          let successful = regenerateStrollButton()
-          if (!successful) {
-              warnInfo('自动识别逛一逛按钮失败，请主动配置区域或者图片信息', true)
-              hasNext = false
-          } else {
-              region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-          }
+        region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
+      }
+    }  
+
+    let firstEntry = true // 标记是否为第一次进入好友森林  
+
+    while (hasNext) {
+      if (this.duplicateChecker.checkIsAllDuplicated()) {
+        debugInfo('全部都在白名单，没有可以逛一逛的了')
+        break
       }  
-      let firstEntry = true   // 标志是否为第一次进入好友森林  
-      while (hasNext) {
-          if (this.duplicateChecker.checkIsAllDuplicated()) {
-              debugInfo('全部都在白名单，没有可以逛一逛的了')
-              break
-          }  
-          if (firstEntry) {
-              // ====== 首次进入：使用原有的点击“逛一逛”按钮逻辑 ======
-              debugInfo(['逛第一个, click random region: [{}]', JSON.stringify(region)])
-              this.visualHelper.addRectangle('准备点击第一个', region)
-              WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
-              this.visualHelper.displayAndClearAll()
-              // 直接点击中间位置
-              automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
-              sleep(500)
-              WarningFloaty.clearAll()   // 清除可能的悬浮标记
-              firstEntry = false   // 下次循环将走滑动分支
-          } else {
-              // ====== 后续切换：使用上划屏幕 ======
-              debugInfo('切换到下一个好友，执行上划屏幕')
-              let screenWidth = _config.device_width
-              let screenHeight = _config.device_height
-              let startX = screenWidth / 2
-              let startY = screenHeight * 0.4   // 从屏幕下方40%处
-              let endX = screenWidth / 2
-              let endY = screenHeight * 0.1     // 滑到上方10%处
-              swipe(startX, startY, endX, endY, 400)   // 持续600ms
-              sleep(500)   // 等待惯性滚动和加载
-          }
-          // 执行好友能量收集（原有逻辑不变）
-          hasNext = this.collectTargetFriend()
-      }  
-      WarningFloaty.clearAll()
-      let result = { regenerate_stroll_button: this._regenerate_stroll_button }
-      Object.assign(result, this.getCollectResult())
-      return result
+
+      if (firstEntry) {
+        // ====== 首次从自己首页进入第一个好友：点击“逛一逛”按钮 ======
+        debugInfo(['逛第一个好友，点击逛一逛区域: [{}]', JSON.stringify(region)])
+        this.visualHelper.addRectangle('准备点击第一个', region)
+        WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
+        this.visualHelper.displayAndClearAll()
+        
+        automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
+        sleep(500) // 增加进入第一个好友页面的等待缓冲
+        WarningFloaty.clearAll()
+        firstEntry = false 
+      } else {
+        // ====== 后续好友切换：直接向上滑动屏幕 ======
+        debugInfo('切换到下一个好友，执行上划屏幕')
+        let screenWidth = _config.device_width || device.width
+        let screenHeight = _config.device_height || device.height
+        
+        // 从屏幕 40% 高度处向上划到 20% 高度，模拟人手流畅滑动
+        let startX = Math.floor(screenWidth * 0.5)
+        let startY = Math.floor(screenHeight * 0.4)
+        let endX = Math.floor(screenWidth * 0.5)
+        let endY = Math.floor(screenHeight * 0.2)
+        
+        swipe(startX, startY, endX, endY, 300)
+        sleep(500) // 留出足够的 0.5 秒动画滑动和加载时间
+      }
+
+      // 执行当前好友的能量收集
+      hasNext = this.collectTargetFriend()
+    }  
+
+    WarningFloaty.clearAll()
+    let result = { regenerate_stroll_button: this._regenerate_stroll_button }
+    Object.assign(result, this.getCollectResult())
+    return result
   }
 
   this.backToListIfNeeded = function (rentery, obj, temp) {
@@ -166,7 +171,7 @@ const StrollScanner = function () {
   }
 
   /**
-   * 逛一逛模式进行特殊处理
+   * 获取当前好友名称
    */
   this.getFriendName = function () {
     let friendNameGettingRegex = _config.friend_name_getting_regex || '(.*)的蚂蚁森林'
@@ -189,63 +194,42 @@ StrollScanner.prototype.constructor = StrollScanner
 
 StrollScanner.prototype.collectTargetFriend = function () {
   let obj = {}
-  debugInfo('等待进入好友主页')
-  let restartLoop = false
+  debugInfo('等待进入/校验好友主页')
   let count = 1
-  ///sleep(1000)
   let alternativeFriendOrDone = 0
+
   if (auto.clearCache) {
-    let start = new Date().getTime()
     auto.clearCache()
-    debugInfo(['刷新根控件成功: {}ms', (new Date().getTime() - start)])
   }
+
   if (_config.friend_home_check_regex.indexOf('的蚂蚁森林') < 0) {
     _config.overwrite('friend_home_check_regex', _config.friend_home_check_regex + '|.*的蚂蚁森林')
   }
-  // 未找到好友首页控件 循环等待三次
+
+  // 循环等待校验当前页面是否为好友主页
   while ((alternativeFriendOrDone = _widgetUtils.alternativeWidget(_config.friend_home_check_regex, _config.stroll_end_ui_content || /找能量共获得.*/, null, false, null, { algorithm: 'PVDFS' })) !== 1) {
-    // 找到了结束标志信息 停止逛一逛
-    let ended = false
+    
+    // 如果检测到了“逛一逛结束/找能量共获得...”标志
     if (alternativeFriendOrDone === 2) {
-      debugInfo('逛一逛啥也没有，不再瞎逛')
-      ended = true
+      debugInfo('检测到逛一逛结束标志，终止巡航')
       this.checkDailyReward()
-    }
-    if (this.checkAndCollectRain()) {
-      ended = true
-    }
-    if (ended) {
       return false
     }
-    debugInfo(
-      '未能进入主页，等待500ms count:' + count++
-    )
+
+    if (this.checkAndCollectRain()) {
+      return false
+    }
+
+    debugInfo('未能进入/识别好友主页，等待500ms count:' + count++)
     sleep(500)
-    if (count >= 3) {
-      if (!this.regenerated_stroll_button) {
-        warnInfo(['可能逛一逛按钮不正确，重新识别'])
-        if (regenerateStrollButton()) {
-          let region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-          automator.clickRandomRegion({ left: region[0], top: region[1], width: region[2], height: region[3] })
-          sleep(1000)
-          this.regenerated_stroll_button = true
-          continue
-        }
-      }
-      this._regenerate_stroll_button = true
-      warnInfo('重试超过3次，取消操作')
-      warnInfo(['无法确认是否进入好友主页，请检查`判断是否进入好友首页`的控件文本配置是否正确，当前值：{}', _config.friend_home_check_regex])
-      warnInfo(['或者检查一下逛一逛按钮的位置是否正确，当前按钮区域：{}', JSON.stringify([_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height])])
-      WarningFloaty.addRectangle('逛一逛按钮区域不正确', [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height], '#ff0000')
-      WarningFloaty.addText('逛一逛按钮区域不正确', { x: _config.device_width * 0.4, y: _config.device_height * 0.5 }, '#ff0000', 30)
-      restartLoop = true
-      break
+
+    // 允许重试 4 次，如果依然没有找到好友主页，屏蔽原先“重新识别逛一逛”逻辑，直接返回 true 继续尝试上划下一个
+    if (count > 4) {
+      warnInfo('无法确认好友主页文本，尝试直接上划跳过该页')
+      return true 
     }
   }
-  if (restartLoop) {
-    errorInfo('页面流程出错，跳过好友能量收集')
-    return false
-  }
+
   let name = this.getFriendName()
   if (name) {
     obj.name = name
@@ -255,49 +239,55 @@ StrollScanner.prototype.collectTargetFriend = function () {
     } else {
       this.duplicateEnterCount = 0
     }
+    
+    // 如果连续 3 次都在同一个好友界面（说明滑动未成功生效）
     if (this.duplicateEnterCount >= 3) {
-      this._regenerate_stroll_button = true
-      warnInfo(['重复卡在一个好友界面，可能逛一逛按钮区域不正确，重新识别'], true)
+      warnInfo(['连续卡在好友[{}]界面，滑动可能失效，退出巡航', name], true)
       return false
     }
     this.lastFriendName = name
   } else {
     this.checkAndCollectRain()
-    return false
+    // 拿不到名字但也没有退出标志，返回 true 尝试划到下一个
+    return true 
   }
+
   let skip = false
   if (!skip && _config.white_list && _config.white_list.indexOf(obj.name) >= 0) {
-    debugInfo(['{} 在白名单中不收取他', obj.name])
+    debugInfo(['{} 在白名单中，不收取他', obj.name])
     skip = true
   }
   if (!skip && _commonFunctions.checkIsProtected(obj.name)) {
-    warnInfo(['{} 使用了保护罩 不收取他', obj.name])
+    warnInfo(['{} 使用了保护罩，不收取他', obj.name])
     skip = true
   }
+
   if (skip) {
-    return true
+    return true // 跳过当前好友，允许继续滑动到下一个
   }
+
   if (!obj.recheck) {
-    // 增加延迟 避免展开好友动态失败
     sleep(100)
     this.protectInfoDetect(obj.name)
   } else {
     this.isProtected = false
     this.isProtectDetectDone = true
   }
-  this.saveButtonRegionIfNeeded()
+
   if (this.first_check) {
-    // 当前在好友界面已经无法使用双击卡了，只能选择赠送
     _widgetUtils.checkAndUseDuplicateCard()
     this.first_check = false
   }
+
+  // ===== 核心：执行当前好友的能量收集 =====
   let result = this.doCollectTargetFriend(obj)
+
   if (!this.collect_any) {
-    // 未收取任何能量，可能在保护罩或者白名单中，亦或者发生了异常或识别出错 将其放入重复队列
     this.duplicateChecker.pushIntoDuplicated(obj)
   } else {
     this.duplicateChecker.resetAll()
   }
+
   return result
 }
 
@@ -331,16 +321,12 @@ StrollScanner.prototype.checkDailyReward = function () {
   }
 }
 
-
 StrollScanner.prototype.checkAndCollectRain = function () {
   let target = null
   auto.clearCache && auto.clearCache()
   if ((target = _widgetUtils.widgetGetOne(_config.rain_entry_content || '.*能量雨.*', 500, true)) != null) {
-    // 首页也有能量雨标志，需要确认是否还停留在首页
     if (_widgetUtils.widgetCheck(_config.home_ui_content, 500)) {
       warnInfo('找到能量雨开始标志，但是当前依旧在个人首页')
-      // 重新生成逛一逛按钮区域
-      config._regenerate_stroll_button = true
       return false
     }
     if (!_config.collect_rain_when_stroll) {
@@ -381,19 +367,16 @@ StrollScanner.prototype.saveButtonRegionIfNeeded = function () {
     debugInfo(['保存重新生成的逛一逛按钮区域：{}', JSON.stringify([_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height])])
   }
 }
+
 module.exports = StrollScanner
 
-
 // inner functions
-
 function refillStrollInfo (region) {
   _config.stroll_button_left = parseInt(region[0])
   _config.stroll_button_top = parseInt(region[1])
   _config.stroll_button_width = parseInt(region[2])
   _config.stroll_button_height = parseInt(region[3])
-  // 用于执行保存数值
   _config.stroll_button_regenerate = true
-
   debugInfo(['重新生成逛一逛按钮区域：{}', JSON.stringify(region)])
 }
 
@@ -415,28 +398,19 @@ function regenerateByYolo (screen) {
   let yoloCheck = YoloDetection.forward(screen, { labelRegex: 'stroll_btn' })
   if (yoloCheck && yoloCheck.length > 0) {
     let bounds = yoloCheck[0]
-    region = [
-      bounds.x, bounds.y,
-      bounds.width, bounds.height
-    ]
+    region = [ bounds.x, bounds.y, bounds.width, bounds.height ]
     refillStrollInfo(region)
     return true
   }
   return false
-
 }
 
 function regenerateByOcr (screen) {
   let ocrCheck = ocrFindText(screen, '找能量', 1)
   if (ocrCheck) {
     let bounds = ocrCheck.bounds
-    if (!bounds) {
-      return false
-    }
-    region = [
-      bounds.left, bounds.top,
-      bounds.width(), bounds.height()
-    ]
+    if (!bounds) return false
+    region = [ bounds.left, bounds.top, bounds.width(), bounds.height() ]
     refillStrollInfo(region)
     return true
   }
