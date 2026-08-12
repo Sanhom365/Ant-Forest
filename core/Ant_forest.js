@@ -259,7 +259,7 @@ function Ant_forest () {
         limit = exec()
         let count = 3
         while (count-- > 0 && !toastDone) {
-          sleep(1000)
+          sleep(800)
         }
         if (!toastDone) {
           warnInfo('获取toast超时释放锁')
@@ -480,7 +480,7 @@ function Ant_forest () {
     // 收取双倍能量
     collectDoubleEnergy()
     // 等待能量值稳定
-    sleep(500)
+    sleep(200)
     _post_energy = getCurrentEnergy()
     logFloaty.pushLog('当前能量：' + _post_energy)
     // 领取奖励, 如果是循环模式则跳过每日奖励
@@ -502,7 +502,7 @@ function Ant_forest () {
     // 循环模式、或者有漏收 不返回home
     if ((!_config.is_cycle || !_has_next) && !_lost_someone) {
       automator.clickClose()
-      sleep(1000)
+      sleep(500)
       // 返回最小化支付宝
       _commonFunctions.disableAlipayWidgets()
       _commonFunctions.minimize(_config.package_name)
@@ -576,7 +576,7 @@ function Ant_forest () {
         if (results && results.length > 0) {
           let targetBd = results[0].bounds
           automator.click(targetBd.centerX(), targetBd.centerY())
-          sleep(1000)
+          sleep(500)
           return true
         }
       }
