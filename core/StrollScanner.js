@@ -2,8 +2,8 @@
  * @Author: TonyJiangWJ
  * @Date: 2020-09-07 13:06:32
  * @Last Modified by: Sanhom365
- * @Last Modified time: 2026-08-12 15:00:00
- * @Description: 逛一逛收集器 (适配上划巡航与无逛一逛按钮模式)
+ * @Last Modified time: 2026-08-12 18:12:00
+ * @Description: 逛一逛收集器
  */
 let { config: _config, storage_name: _storage_name } = require('../config.js')(runtime, global)
 let singletonRequire = require('../lib/SingletonRequirer.js')(runtime, global)
@@ -95,7 +95,7 @@ const StrollScanner = function () {
     let hasNext = true
     let region = null
 
-    // 仅在自己的森林主页寻找“逛一逛”按钮（用于进入第1个好友）
+    // 获取逛一逛按钮区域（仅在自己首页用一次）
     if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
       region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
     } else {
@@ -108,7 +108,7 @@ const StrollScanner = function () {
       }
     }  
 
-    let firstEntry = true // 标记是否为第一次进入好友森林  
+    let firstEntry = true // 标志是否为第一次进入好友森林  
 
     while (hasNext) {
       if (this.duplicateChecker.checkIsAllDuplicated()) {
@@ -117,33 +117,30 @@ const StrollScanner = function () {
       }  
 
       if (firstEntry) {
-        // ====== 首次从自己首页进入第一个好友：点击“逛一逛”按钮 ======
-        debugInfo(['逛第一个好友，点击逛一逛区域: [{}]', JSON.stringify(region)])
+        // ====== 首次进入：点击“逛一逛”按钮 ======
+        debugInfo(['逛第一个, click random region: [{}]', JSON.stringify(region)])
         this.visualHelper.addRectangle('准备点击第一个', region)
         WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
         this.visualHelper.displayAndClearAll()
         
         automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
-        sleep(500) // 增加进入第一个好友页面的等待缓冲
+        sleep(1000) // 【关键修正】给予第1个好友足够的加载时间，防止页面未出就检测超时
         WarningFloaty.clearAll()
         firstEntry = false 
       } else {
-        // ====== 后续好友切换：直接向上滑动屏幕 ======
+        // ====== 后续切换：使用你的原设定上划参数 ======
         debugInfo('切换到下一个好友，执行上划屏幕')
-        let screenWidth = _config.device_width || device.width
-        let screenHeight = _config.device_height || device.height
-        
-        // 从屏幕 40% 高度处向上划到 20% 高度，模拟人手流畅滑动
-        let startX = Math.floor(screenWidth * 0.5)
-        let startY = Math.floor(screenHeight * 0.4)
-        let endX = Math.floor(screenWidth * 0.5)
-        let endY = Math.floor(screenHeight * 0.2)
-        
-        swipe(startX, startY, endX, endY, 300)
-        sleep(500) // 留出足够的 0.5 秒动画滑动和加载时间
+        let screenWidth = _config.device_width
+        let screenHeight = _config.device_height
+        let startX = screenWidth / 2
+        let startY = screenHeight * 0.4   // 从屏幕下方40%处
+        let endX = screenWidth / 2
+        let endY = screenHeight * 0.1     // 滑到上方10%处
+        swipe(startX, startY, endX, endY, 300)   // 持续400ms
+        sleep(1000)   // 等待动画和加载
       }
 
-      // 执行当前好友的能量收集
+      // 执行好友能量收集，确保无论如何都不随便中断
       hasNext = this.collectTargetFriend()
     }  
 
@@ -171,7 +168,7 @@ const StrollScanner = function () {
   }
 
   /**
-   * 获取当前好友名称
+   * 逛一逛模式获取好友名称
    */
   this.getFriendName = function () {
     let friendNameGettingRegex = _config.friend_name_getting_regex || '(.*)的蚂蚁森林'
@@ -206,12 +203,12 @@ StrollScanner.prototype.collectTargetFriend = function () {
     _config.overwrite('friend_home_check_regex', _config.friend_home_check_regex + '|.*的蚂蚁森林')
   }
 
-  // 循环等待校验当前页面是否为好友主页
+  // 循环判定当前页面
   while ((alternativeFriendOrDone = _widgetUtils.alternativeWidget(_config.friend_home_check_regex, _config.stroll_end_ui_content || /找能量共获得.*/, null, false, null, { algorithm: 'PVDFS' })) !== 1) {
     
-    // 如果检测到了“逛一逛结束/找能量共获得...”标志
+    // 只有明确找到了“逛一逛结束”/“找能量共获得”的标志，才真正停止巡航
     if (alternativeFriendOrDone === 2) {
-      debugInfo('检测到逛一逛结束标志，终止巡航')
+      debugInfo('找到了逛一逛结束标志，终止巡航')
       this.checkDailyReward()
       return false
     }
@@ -220,13 +217,13 @@ StrollScanner.prototype.collectTargetFriend = function () {
       return false
     }
 
-    debugInfo('未能进入/识别好友主页，等待500ms count:' + count++)
+    debugInfo('未能进入主页，等待500ms count:' + count++)
     sleep(500)
 
-    // 允许重试 4 次，如果依然没有找到好友主页，屏蔽原先“重新识别逛一逛”逻辑，直接返回 true 继续尝试上划下一个
-    if (count > 4) {
-      warnInfo('无法确认好友主页文本，尝试直接上划跳过该页')
-      return true 
+    // 重试 3 次后，不再试图检测/重新生成“逛一逛”按钮，直接跳出循环去尝试收集能量！
+    if (count >= 3) {
+      warnInfo('未识别到好友首页特征，尝试直接强行识别并收集能量...')
+      break
     }
   }
 
@@ -239,31 +236,30 @@ StrollScanner.prototype.collectTargetFriend = function () {
     } else {
       this.duplicateEnterCount = 0
     }
-    
-    // 如果连续 3 次都在同一个好友界面（说明滑动未成功生效）
-    if (this.duplicateEnterCount >= 3) {
-      warnInfo(['连续卡在好友[{}]界面，滑动可能失效，退出巡航', name], true)
+    // 只有连续 4 次处于同一个好友界面（说明滑动完全没响应），才退出
+    if (this.duplicateEnterCount >= 4) {
+      warnInfo(['连续卡在好友[{}]界面，滑动可能失效，停止巡航', name], true)
       return false
     }
     this.lastFriendName = name
   } else {
-    this.checkAndCollectRain()
-    // 拿不到名字但也没有退出标志，返回 true 尝试划到下一个
-    return true 
+    // 【关键修正】即使拿不到名字，也绝不 return false！防止打断主流程，赋予伪名字继续收集
+    obj.name = "未知好友_" + new Date().getTime()
+    debugInfo('未能获取好友名字，继续尝试执行能量收集')
   }
 
   let skip = false
   if (!skip && _config.white_list && _config.white_list.indexOf(obj.name) >= 0) {
-    debugInfo(['{} 在白名单中，不收取他', obj.name])
+    debugInfo(['{} 在白名单中不收取他', obj.name])
     skip = true
   }
   if (!skip && _commonFunctions.checkIsProtected(obj.name)) {
-    warnInfo(['{} 使用了保护罩，不收取他', obj.name])
+    warnInfo(['{} 使用了保护罩 不收取他', obj.name])
     skip = true
   }
 
   if (skip) {
-    return true // 跳过当前好友，允许继续滑动到下一个
+    return true // 白名单/保护罩跳过，但返回 true 允许上划继续
   }
 
   if (!obj.recheck) {
@@ -279,8 +275,8 @@ StrollScanner.prototype.collectTargetFriend = function () {
     this.first_check = false
   }
 
-  // ===== 核心：执行当前好友的能量收集 =====
-  let result = this.doCollectTargetFriend(obj)
+  // 无论前面的名字校验是否完美，都强制调用核心收能量函数！
+  this.doCollectTargetFriend(obj)
 
   if (!this.collect_any) {
     this.duplicateChecker.pushIntoDuplicated(obj)
@@ -288,7 +284,8 @@ StrollScanner.prototype.collectTargetFriend = function () {
     this.duplicateChecker.resetAll()
   }
 
-  return result
+  // 【核心保证】强制返回 true，保证 while (hasNext) 循环继续，从而能够运行上划逻辑 swipe()
+  return true
 }
 
 StrollScanner.prototype.checkDailyReward = function () {
