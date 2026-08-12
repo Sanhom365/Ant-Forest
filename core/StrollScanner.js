@@ -119,7 +119,19 @@ const StrollScanner = function () {
       WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
       this.visualHelper.displayAndClearAll()
       // 直接点击中间位置
-      automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
+      //automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
+      // ========== 替换为滑动操作 ==========
+      let screenWidth = _config.device_width;
+      let screenHeight = _config.device_height;
+      // 滑动起点：屏幕宽度的1/2，高度的40%处（靠近中部）
+      let startX = screenWidth / 2;
+      let startY = screenHeight * 0.4;
+      // 滑动终点：屏幕宽度的1/2，高度的10%处（靠近顶部）
+      let endX = screenWidth / 2;
+      let endY = screenHeight * 0.1;
+      // 执行上滑，持续时间600ms
+      swipe(startX, startY, endX, endY, 600);
+      // 等待页面惯性滚动和加载动画
       sleep(300)
       hasNext = this.collectTargetFriend()
     }
