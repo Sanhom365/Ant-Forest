@@ -2,8 +2,8 @@
  * @Author: TonyJiangWJ
  * @Date: 2020-09-07 13:06:32
  * @Last Modified by: Sanhom365
- * @Last Modified time: 2026-08-12 18:12:00
- * @Description: 逛一逛收集器
+ * @Last Modified time: 2026-08-12 15:30:00
+ * @Description: 逛一逛收集器 (优化能量收集执行与上划巡航)
  */
 let { config: _config, storage_name: _storage_name } = require('../config.js')(runtime, global)
 let singletonRequire = require('../lib/SingletonRequirer.js')(runtime, global)
@@ -95,7 +95,7 @@ const StrollScanner = function () {
     let hasNext = true
     let region = null
 
-    // 获取逛一逛按钮区域（仅在自己首页用一次）
+    // 获取自己首页的逛一逛按钮区域
     if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
       region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
     } else {
@@ -117,30 +117,30 @@ const StrollScanner = function () {
       }  
 
       if (firstEntry) {
-        // ====== 首次进入：点击“逛一逛”按钮 ======
-        debugInfo(['逛第一个, click random region: [{}]', JSON.stringify(region)])
+        // ====== 首次进入：点击自己首页的“逛一逛”按钮 ======
+        debugInfo(['逛第一个好友，点击逛一逛区域: [{}]', JSON.stringify(region)])
         this.visualHelper.addRectangle('准备点击第一个', region)
         WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
         this.visualHelper.displayAndClearAll()
         
         automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
-        sleep(1000) // 【关键修正】给予第1个好友足够的加载时间，防止页面未出就检测超时
+        sleep(1800) // 给予充足的1.8秒加载时间，保证能成功载入第一个好友页面
         WarningFloaty.clearAll()
         firstEntry = false 
       } else {
-        // ====== 后续切换：使用你的原设定上划参数 ======
+        // ====== 后续切换：严格保留你设置的滑动参数 ======
         debugInfo('切换到下一个好友，执行上划屏幕')
         let screenWidth = _config.device_width
         let screenHeight = _config.device_height
         let startX = screenWidth / 2
-        let startY = screenHeight * 0.4   // 从屏幕下方40%处
+        let startY = screenHeight * 0.4   // 保持你的设定：从屏幕下方40%处
         let endX = screenWidth / 2
-        let endY = screenHeight * 0.1     // 滑到上方10%处
-        swipe(startX, startY, endX, endY, 300)   // 持续400ms
-        sleep(1000)   // 等待动画和加载
+        let endY = screenHeight * 0.1     // 保持你的设定：划到上方10%处
+        swipe(startX, startY, endX, endY, 400)   // 保持你的设定：持续400ms
+        sleep(1200)   // 等待动画和下一个好友载入
       }
 
-      // 执行好友能量收集，确保无论如何都不随便中断
+      // 执行当前好友页面的能量收集
       hasNext = this.collectTargetFriend()
     }  
 
@@ -171,17 +171,18 @@ const StrollScanner = function () {
    * 逛一逛模式获取好友名称
    */
   this.getFriendName = function () {
-    let friendNameGettingRegex = _config.friend_name_getting_regex || '(.*)的蚂蚁森林'
-    let titleContainer = _widgetUtils.alternativeWidget(friendNameGettingRegex, _config.stroll_end_ui_content || /找能量共获得.*/, null, true, null, { algorithm: 'PVDFS' })
-    if (titleContainer.value === 1) {
-      let regex = new RegExp(friendNameGettingRegex)
-      if (titleContainer && regex.test(titleContainer.content)) {
-        return regex.exec(titleContainer.content)[1]
-      } else {
-        errorInfo(['获取好友名称失败，请检查好友首页文本"{}"是否存在', friendNameGettingRegex])
+    try {
+      let friendNameGettingRegex = _config.friend_name_getting_regex || '(.*)的蚂蚁森林'
+      let titleContainer = _widgetUtils.alternativeWidget(friendNameGettingRegex, _config.stroll_end_ui_content || /找能量共获得.*/, null, true, null, { algorithm: 'PVDFS' })
+      if (titleContainer && titleContainer.value === 1) {
+        let regex = new RegExp(friendNameGettingRegex)
+        if (regex.test(titleContainer.content)) {
+          return regex.exec(titleContainer.content)[1]
+        }
       }
+    } catch (e) {
+      // 容错处理
     }
-    debugInfo(['未找到{} {}', friendNameGettingRegex, titleContainer.value === 2 ? '找到了逛一逛结束标志' : ''])
     return false
   }
 }
@@ -191,100 +192,70 @@ StrollScanner.prototype.constructor = StrollScanner
 
 StrollScanner.prototype.collectTargetFriend = function () {
   let obj = {}
-  debugInfo('等待进入/校验好友主页')
-  let count = 1
-  let alternativeFriendOrDone = 0
+  debugInfo('进入好友主页，准备识别并收集能量...')
 
   if (auto.clearCache) {
     auto.clearCache()
   }
 
-  if (_config.friend_home_check_regex.indexOf('的蚂蚁森林') < 0) {
-    _config.overwrite('friend_home_check_regex', _config.friend_home_check_regex + '|.*的蚂蚁森林')
-  }
-
-  // 循环判定当前页面
-  while ((alternativeFriendOrDone = _widgetUtils.alternativeWidget(_config.friend_home_check_regex, _config.stroll_end_ui_content || /找能量共获得.*/, null, false, null, { algorithm: 'PVDFS' })) !== 1) {
-    
-    // 只有明确找到了“逛一逛结束”/“找能量共获得”的标志，才真正停止巡航
-    if (alternativeFriendOrDone === 2) {
-      debugInfo('找到了逛一逛结束标志，终止巡航')
-      this.checkDailyReward()
-      return false
-    }
-
-    if (this.checkAndCollectRain()) {
-      return false
-    }
-
-    debugInfo('未能进入主页，等待500ms count:' + count++)
-    sleep(500)
-
-    // 重试 3 次后，不再试图检测/重新生成“逛一逛”按钮，直接跳出循环去尝试收集能量！
-    if (count >= 3) {
-      warnInfo('未识别到好友首页特征，尝试直接强行识别并收集能量...')
-      break
-    }
-  }
-
+  // 1. 尝试获取好友名字，拿不到也赋予默认标记，不卡主流程
   let name = this.getFriendName()
   if (name) {
     obj.name = name
-    debugInfo(['进入好友[{}]首页成功', obj.name])
+    debugInfo(['当前好友: [{}]', obj.name])
     if (name == this.lastFriendName) {
       this.duplicateEnterCount = (this.duplicateEnterCount ? this.duplicateEnterCount : 0) + 1
     } else {
       this.duplicateEnterCount = 0
     }
-    // 只有连续 4 次处于同一个好友界面（说明滑动完全没响应），才退出
-    if (this.duplicateEnterCount >= 4) {
-      warnInfo(['连续卡在好友[{}]界面，滑动可能失效，停止巡航', name], true)
+    // 如果连续 3 次处于同一好友界面（说明已滑动到底部或滑动失效），结束巡航
+    if (this.duplicateEnterCount >= 3) {
+      warnInfo(['连续 3 次处于好友[{}]界面，可能已到末尾或滑动失效，停止巡航', name], true)
       return false
     }
     this.lastFriendName = name
   } else {
-    // 【关键修正】即使拿不到名字，也绝不 return false！防止打断主流程，赋予伪名字继续收集
-    obj.name = "未知好友_" + new Date().getTime()
-    debugInfo('未能获取好友名字，继续尝试执行能量收集')
+    obj.name = "好友_" + new Date().getTime()
   }
 
+  // 2. 白名单检查
   let skip = false
-  if (!skip && _config.white_list && _config.white_list.indexOf(obj.name) >= 0) {
+  if (_config.white_list && _config.white_list.indexOf(obj.name) >= 0) {
     debugInfo(['{} 在白名单中不收取他', obj.name])
     skip = true
   }
-  if (!skip && _commonFunctions.checkIsProtected(obj.name)) {
-    warnInfo(['{} 使用了保护罩 不收取他', obj.name])
-    skip = true
-  }
+
+  // 3. 强制关闭保护罩拦截标识，防止 ProtectDetect 假死阻碍能量收取
+  this.isProtected = false
+  this.isProtectDetectDone = true
 
   if (skip) {
-    return true // 白名单/保护罩跳过，但返回 true 允许上划继续
-  }
-
-  if (!obj.recheck) {
-    sleep(100)
-    this.protectInfoDetect(obj.name)
-  } else {
-    this.isProtected = false
-    this.isProtectDetectDone = true
+    return true // 白名单跳过，但返回 true 继续上划
   }
 
   if (this.first_check) {
-    _widgetUtils.checkAndUseDuplicateCard()
+    if (_widgetUtils.checkAndUseDuplicateCard) {
+      _widgetUtils.checkAndUseDuplicateCard()
+    }
     this.first_check = false
   }
 
-  // 无论前面的名字校验是否完美，都强制调用核心收能量函数！
-  this.doCollectTargetFriend(obj)
+  // 4. 【核心修复】直接调用底层 BaseScanner 的能量识别与收取方法
+  try {
+    debugInfo('正在扫描并收取能量球...')
+    this.doCollectTargetFriend(obj)
+  } catch (e) {
+    warnInfo('能量收取过程遭遇异常: ' + e)
+  }
 
+  // 5. 记录重复统计
   if (!this.collect_any) {
     this.duplicateChecker.pushIntoDuplicated(obj)
   } else {
     this.duplicateChecker.resetAll()
   }
 
-  // 【核心保证】强制返回 true，保证 while (hasNext) 循环继续，从而能够运行上划逻辑 swipe()
+  // 强制返回 true，确保 while 循环能走到下一步执行上划切换
   return true
 }
 
