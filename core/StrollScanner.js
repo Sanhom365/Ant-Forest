@@ -1,8 +1,8 @@
 /*
  * @Author: TonyJiangWJ
  * @Date: 2020-09-07 13:06:32
- * @Last Modified by: TonyJiangWJ
- * @Last Modified time: 2025-08-31 17:36:18
+ * @Last Modified by: Sanhom365
+ * @Last Modified time: 2026-08-12 14:08:00
  * @Description: 逛一逛收集器
  */
 let { config: _config, storage_name: _storage_name } = require('../config.js')(runtime, global)
