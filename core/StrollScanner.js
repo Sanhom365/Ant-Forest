@@ -124,7 +124,7 @@ const StrollScanner = function () {
               this.visualHelper.displayAndClearAll()
               // 直接点击中间位置
               automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
-              sleep(200)
+              sleep(500)
               firstEntry = false   // 下次循环将走滑动分支
           } else {
               // ====== 后续切换：使用上划屏幕 ======
@@ -136,29 +136,8 @@ const StrollScanner = function () {
               let endX = screenWidth / 2
               let endY = screenHeight * 0.1     // 滑到上方10%处
               swipe(startX, startY, endX, endY, 400)   // 持续600ms
-              sleep(300)   // 等待惯性滚动和加载
+              sleep(500)   // 等待惯性滚动和加载
               WarningFloaty.clearAll()   // 清除可能的悬浮标记
-          }
-          // --- 调用收集函数，并增加重试机制 ---
-          let collectResult = this.collectTargetFriend();
-          if (!collectResult) {
-              // 如果收集失败，可能是因为页面未正确加载，尝试重新滑动/等待后重试
-              debugInfo('收集失败，等待2秒后重试');
-              sleep(2000);
-              collectResult = this.collectTargetFriend();
-              if (!collectResult && !firstEntry) {
-                  // 若还是失败，尝试再次滑动（针对滑动分支）
-                  debugInfo('重试仍失败，尝试额外滑动一次');
-                  let screenWidth = _config.device_width;
-                  let screenHeight = _config.device_height;
-                  let startX = screenWidth / 2;
-                  let startY = screenHeight * 0.4;
-                  let endX = screenWidth / 2;
-                  let endY = screenHeight * 0.1;
-                  swipe(startX, startY, endX, endY, 400);
-                  sleep(300);
-                  collectResult = this.collectTargetFriend();
-              }
           }
           // 执行好友能量收集（原有逻辑不变）
           hasNext = this.collectTargetFriend()
