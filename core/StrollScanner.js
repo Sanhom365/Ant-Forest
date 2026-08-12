@@ -96,59 +96,65 @@ const StrollScanner = function () {
    * @return { minCountdown, lostSomeone } if successful
    */
   this.collecting = function () {
-    let hasNext = true
-    let region = null
-    if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
-      region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-    } else {
-      let successful = regenerateStrollButton()
-      if (!successful) {
-        warnInfo('自动识别逛一逛按钮失败，请主动配置区域或者图片信息', true)
-        hasNext = false
+      let hasNext = true
+      let region = null
+      // 原有获取逛一逛按钮区域的逻辑（不变）
+      if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
+          region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
       } else {
-        region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-      }
-    }
-    while (hasNext) {
-      if (this.duplicateChecker.checkIsAllDuplicated()) {
-        debugInfo('全部都在白名单，没有可以逛一逛的了')
-        break
-      }
-      debugInfo(['逛下一个, click random region: [{}]', JSON.stringify(region)])
-      this.visualHelper.addRectangle('准备点击下一个', region)
-      WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
-      this.visualHelper.displayAndClearAll()
-      // 直接点击中间位置
-      //automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
-      // ========== 替换为滑动操作 ==========
-      let screenWidth = _config.device_width;
-      let screenHeight = _config.device_height;
-      // 滑动起点：屏幕宽度的1/2，高度的40%处（靠近中部）
-      let startX = screenWidth / 2;
-      let startY = screenHeight * 0.4;
-      // 滑动终点：屏幕宽度的1/2，高度的10%处（靠近顶部）
-      let endX = screenWidth / 2;
-      let endY = screenHeight * 0.1;
-      // 执行上滑，持续时间600ms
-      swipe(startX, startY, endX, endY, 600);
-      // 等待页面惯性滚动和加载动画
-      sleep(300)
-      hasNext = this.collectTargetFriend()
-    }
-    WarningFloaty.clearAll()
-    let result = { regenerate_stroll_button: this._regenerate_stroll_button }
-    Object.assign(result, this.getCollectResult())
-    return result
+          let successful = regenerateStrollButton()
+          if (!successful) {
+              warnInfo('自动识别逛一逛按钮失败，请主动配置区域或者图片信息', true)
+              hasNext = false
+          } else {
+              region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
+          }
+      }  
+      let firstEntry = true   // 标志是否为第一次进入好友森林  
+      while (hasNext) {
+          if (this.duplicateChecker.checkIsAllDuplicated()) {
+              debugInfo('全部都在白名单，没有可以逛一逛的了')
+              break
+          }  
+          if (firstEntry) {
+              // ====== 首次进入：使用原有的点击“逛一逛”按钮逻辑 ======
+              debugInfo(['逛第一个, click random region: [{}]', JSON.stringify(region)])
+              this.visualHelper.addRectangle('准备点击第一个', region)
+              WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
+              this.visualHelper.displayAndClearAll()
+              automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
+              sleep(300)
+              firstEntry = false   // 下次循环将走滑动分支
+          } else {
+              // ====== 后续切换：使用上划屏幕 ======
+              debugInfo('切换到下一个好友，执行上划屏幕')
+              let screenWidth = _config.device_width
+              let screenHeight = _config.device_height
+              let startX = screenWidth / 2
+              let startY = screenHeight * 0.4   // 从屏幕下方40%处
+              let endX = screenWidth / 2
+              let endY = screenHeight * 0.1     // 滑到上方10%处
+              swipe(startX, startY, endX, endY, 400)   // 持续600ms
+              sleep(500)   // 等待惯性滚动和加载
+              WarningFloaty.clearAll()   // 清除可能的悬浮标记
+          }  
+          // 执行好友能量收集（原有逻辑不变）
+          hasNext = this.collectTargetFriend()
+      }  
+      WarningFloaty.clearAll()
+      let result = { regenerate_stroll_button: this._regenerate_stroll_button }
+      Object.assign(result, this.getCollectResult())
+      return result
   }
 
   this.backToListIfNeeded = function (rentery, obj, temp) {
     if (!rentery) {
-      debugInfo('准备逛下一个，等待200ms')
-      sleep(200)
+      debugInfo('准备逛下一个，等待100ms')
+      sleep(100)
       return true
     } else {
-      debugInfo('二次校验好友信息，等待250ms')
-      sleep(250)
+      debugInfo('二次校验好友信息，等待100ms')
+      sleep(100)
       obj.recheck = true
       return this.doCollectTargetFriend(obj, temp)
     }
