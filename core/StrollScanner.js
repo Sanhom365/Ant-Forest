@@ -1,437 +1,151 @@
 /*
- * @Author: TonyJiangWJ
- * @Date: 2020-09-07 13:06:32
+ * @Author: Sanhom365
+ * @Date: 2026-08-12 15:30:00
  * @Last Modified by: Sanhom365
- * @Last Modified time: 2026-08-12 15:30:00
- * @Description: 逛一逛收集器 (优化能量收集执行与上划巡航)
+ * @Last Modified time: 2026-08-13 10:16:00
+ * @Description: 极速逛一逛/好友能量收集脚本 (基于区域图像检测)
  */
-let { config: _config, storage_name: _storage_name } = require('../config.js')(runtime, global)
+let { config: _config } = require('../config.js')(runtime, global)
 let singletonRequire = require('../lib/SingletonRequirer.js')(runtime, global)
-let _widgetUtils = singletonRequire('WidgetUtils')
 let automator = singletonRequire('Automator')
 let _commonFunctions = singletonRequire('CommonFunction')
-let fileUtils = singletonRequire('FileUtils')
-let OpenCvUtil = require('../lib/OpenCvUtil.js')
-let localOcrUtil = require('../lib/LocalOcrUtil.js')
-let WarningFloaty = singletonRequire('WarningFloaty')
-let YoloTrainHelper = singletonRequire('YoloTrainHelper')
+let _widgetUtils = singletonRequire('WidgetUtils')
 let YoloDetection = singletonRequire('YoloDetectionUtil')
-
 let BaseScanner = require('./BaseScanner.js')
 
-const DuplicateChecker = function () {
-
-  this.duplicateChecked = {}
-
-  /**
-   * 校验是否全都重复校验过了
-   */
-  this.checkIsAllDuplicated = function () {
-    if (Object.keys(this.duplicateChecked).length === 0) {
-      return false
-    }
-    for (let key in this.duplicateChecked) {
-      if (this.duplicateChecked[key].count <= 2) {
-        return false
-      }
-    }
-    return true
-  }
-
-  /**
-   * 记录 白名单、保护罩好友 重复访问次数的数据
-   * @param {*} obj 
-   */
-  this.pushIntoDuplicated = function (obj) {
-    let exist = this.duplicateChecked[obj.name]
-    if (exist) {
-      exist.count++
-    } else {
-      exist = { name: obj.name, count: 1 }
-    }
-    this.duplicateChecked[obj.name] = exist
-  }
-
-  /**
-   * 收集过1个好友后，重置白名单缓存计数
-   * 用以确保连续遇到白名单好友才退出逛一逛
-   */
-  this.resetAll = function () {
-    Object.keys(this.duplicateChecked).forEach(key => {
-      this.duplicateChecked[key].count = 0
-    })
-  }
-
-}
-
-const StrollScanner = function () {
+function StrollScanner () {
   BaseScanner.call(this)
-  this.duplicateChecker = new DuplicateChecker()
-  this.first_check = true
+
   this.init = function (option) {
+    option = option || {}
     this.current_time = option.currentTime || 0
     this.increased_energy = option.increasedEnergy || 0
-    this.group_execute_mode = option.group_execute_mode || false
-    this.createNewThreadPool()
   }
 
+  /**
+   * 步骤 1：检测指定的屏幕区域内是否有能量球
+   * 仅检查配置的 tree_collect 区域，不进行任何UI控件/保护罩检测
+   */
+  this.hasEnergyBallInRegion = function () {
+    let screen = _commonFunctions.checkCaptureScreenPermission()
+    if (!screen) return false
+
+    // 获取配置中的能量球收集区域
+    let left = _config.tree_collect_left || 0
+    let top = _config.tree_collect_top || 0
+    let width = _config.tree_collect_width || _config.device_width
+    let height = _config.tree_collect_height || _config.device_height
+
+    if (YoloDetection.enabled) {
+      // YOLO 模型识别
+      let list = YoloDetection.forward(screen, {
+        confidence: _config.yolo_confidence || 0.7,
+        filter: (res) => res.label === 'collect' || res.label === 'waterBall'
+      })
+      if (!list || list.length === 0) return false
+
+      // 过滤出落于指定区域内的能量球
+      let valid = list.filter(item => {
+        let cx = item.x + item.width / 2
+        let cy = item.y + item.height / 2
+        return cx >= left && cx <= (left + width) && cy >= top && cy <= (top + height)
+      })
+      return valid.length > 0
+    } else {
+      // Hough 霍夫圆检测
+      let grayImg = images.grayscale(images.medianBlur(screen, 5))
+      let scaleRate = _config.scaleRate || 1
+      let circles = images.findCircles(grayImg, {
+        param1: _config.hough_param1 || 30,
+        param2: _config.hough_param2 || 30,
+        minRadius: parseInt((_config.hough_min_radius || 65) * scaleRate),
+        maxRadius: parseInt((_config.hough_max_radius || 75) * scaleRate),
+        minDst: parseInt((_config.hough_min_dst || 100) * scaleRate)
+      })
+      grayImg.recycle()
+
+      if (!circles || circles.length === 0) return false
+
+      // 过滤指定区域
+      let valid = circles.filter(c => {
+        return c.x >= left && c.x <= (left + width) && c.y >= top && c.y <= (top + height)
+      })
+      return valid.length > 0
+    }
+  }
+
+  /**
+   * 步骤 2：执行收取逻辑
+   */
+  this.doCollectExecution = function () {
+    // 1) 首次收取所有可以收的能量球
+    this.collectEnergy(false)
+
+    // 2) 检测是否使用了双击卡
+    let isDoubleCard = _config._double_click_card_used || _widgetUtils.checkIsDuplicateCardUsed()
+    if (isDoubleCard) {
+      sleep(500)
+      this.collectEnergy(false)
+    }
+
+    // 3) 不管是否使用了双击卡，隔 0.5 秒再收取一次避免漏收
+    sleep(500)
+    this.collectEnergy(false)
+  }
+
+  /**
+   * 步骤 3：上划屏幕切换到下一个好友
+   */
+  this.swipeToNextFriend = function () {
+    let randomTop = _config.topRange() || {}
+    let randomBottom = _config.bottomRange() || {}
+
+    let startY = randomTop.start || parseInt(_config.device_height * 0.75)
+    let endY = randomBottom.end || parseInt(_config.device_height * 0.25)
+
+    automator.randomScrollDown(
+      startY,
+      startY + 50,
+      endY,
+      endY + 50
+    )
+    // 稍微等待滑动动画及界面稳定
+    sleep(600)
+  }
+
+  /**
+   * 核心主循环
+   */
   this.start = function () {
-    debugInfo('逛一逛即将开始')
-    if (_config.regenerate_stroll_button_every_loop) {
-      debugInfo('重新识别逛一逛按钮: ' + regenerateStrollButton())
-    }
-    return this.collecting()
-  }
+    logInfo('开始极速逛一逛收取好友能量...')
+    this.collect_any = false
 
-  this.destroy = function () {
-    debugInfo('逛一逛结束')
-    this.baseDestroy()
-  }
+    while (true) {
+      // 1. 到达好友森林后，直接检测指定区域内是否有能量球
+      let hasBalls = this.hasEnergyBallInRegion()
 
-  /**
-   * 执行收集操作
-   */
-  this.collecting = function () {
-    let hasNext = true
-    let region = null
+      if (hasBalls) {
+        // 2. 检测到能量球，按规定流程收取
+        this.doCollectExecution()
+        this.collect_any = true
 
-    // 获取自己首页的逛一逛按钮区域
-    if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
-      region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-    } else {
-      let successful = regenerateStrollButton()
-      if (!successful) {
-        warnInfo('自动识别逛一逛按钮失败，请主动配置区域或者图片信息', true)
-        hasNext = false
+        // 3. 收集完成后，上划屏幕并循环到下一个好友
+        this.swipeToNextFriend()
       } else {
-        region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-      }
-    }  
-
-    let firstEntry = true // 标志是否为第一次进入好友森林  
-
-    while (hasNext) {
-      if (this.duplicateChecker.checkIsAllDuplicated()) {
-        debugInfo('全部都在白名单，没有可以逛一逛的了')
+        // 4. 如果指定区域检测不到能量球，退出循环，返回自己森林
+        logInfo('指定区域内未检测到可收取能量球，结束逛一逛循环')
         break
-      }  
-
-      if (firstEntry) {
-        // ====== 首次进入：点击自己首页的“逛一逛”按钮 ======
-        debugInfo(['逛第一个好友，点击逛一逛区域: [{}]', JSON.stringify(region)])
-        this.visualHelper.addRectangle('准备点击第一个', region)
-        WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
-        this.visualHelper.displayAndClearAll()
-        
-        automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
-        sleep(1800) // 给予充足的1.8秒加载时间，保证能成功载入第一个好友页面
-        WarningFloaty.clearAll()
-        firstEntry = false 
-      } else {
-        // ====== 后续切换：严格保留你设置的滑动参数 ======
-        debugInfo('切换到下一个好友，执行上划屏幕')
-        let screenWidth = _config.device_width
-        let screenHeight = _config.device_height
-        let startX = screenWidth / 2
-        let startY = screenHeight * 0.4   // 保持你的设定：从屏幕下方40%处
-        let endX = screenWidth / 2
-        let endY = screenHeight * 0.1     // 保持你的设定：划到上方10%处
-        swipe(startX, startY, endX, endY, 400)   // 保持你的设定：持续400ms
-        sleep(1200)   // 等待动画和下一个好友载入
       }
-
-      // 执行当前好友页面的能量收集
-      hasNext = this.collectTargetFriend()
-    }  
-
-    WarningFloaty.clearAll()
-    let result = { regenerate_stroll_button: this._regenerate_stroll_button }
-    Object.assign(result, this.getCollectResult())
-    return result
-  }
-
-  this.backToListIfNeeded = function (rentery, obj, temp) {
-    if (!rentery) {
-      debugInfo('准备逛下一个，等待100ms')
-      sleep(100)
-      return true
-    } else {
-      debugInfo('二次校验好友信息，等待100ms')
-      sleep(100)
-      obj.recheck = true
-      return this.doCollectTargetFriend(obj, temp)
     }
-  }
 
-  this.doIfProtected = function (obj) {
-    //
-  }
-
-  /**
-   * 逛一逛模式获取好友名称
-   */
-  this.getFriendName = function () {
-    try {
-      let friendNameGettingRegex = _config.friend_name_getting_regex || '(.*)的蚂蚁森林'
-      let titleContainer = _widgetUtils.alternativeWidget(friendNameGettingRegex, _config.stroll_end_ui_content || /找能量共获得.*/, null, true, null, { algorithm: 'PVDFS' })
-      if (titleContainer && titleContainer.value === 1) {
-        let regex = new RegExp(friendNameGettingRegex)
-        if (regex.test(titleContainer.content)) {
-          return regex.exec(titleContainer.content)[1]
-        }
-      }
-    } catch (e) {
-      // 容错处理
+    return {
+      collectAny: this.collect_any,
+      regenerate_stroll_button: false
     }
-    return false
   }
 }
 
 StrollScanner.prototype = Object.create(BaseScanner.prototype)
 StrollScanner.prototype.constructor = StrollScanner
 
-StrollScanner.prototype.collectTargetFriend = function () {
-  let obj = {}
-  debugInfo('进入好友主页，准备识别并收集能量...')
-
-  if (auto.clearCache) {
-    auto.clearCache()
-  }
-
-  // 1. 尝试获取好友名字，拿不到也赋予默认标记，不卡主流程
-  let name = this.getFriendName()
-  if (name) {
-    obj.name = name
-    debugInfo(['当前好友: [{}]', obj.name])
-    if (name == this.lastFriendName) {
-      this.duplicateEnterCount = (this.duplicateEnterCount ? this.duplicateEnterCount : 0) + 1
-    } else {
-      this.duplicateEnterCount = 0
-    }
-    // 如果连续 3 次处于同一好友界面（说明已滑动到底部或滑动失效），结束巡航
-    if (this.duplicateEnterCount >= 3) {
-      warnInfo(['连续 3 次处于好友[{}]界面，可能已到末尾或滑动失效，停止巡航', name], true)
-      return false
-    }
-    this.lastFriendName = name
-  } else {
-    obj.name = "好友_" + new Date().getTime()
-  }
-
-  // 2. 白名单检查
-  let skip = false
-  if (_config.white_list && _config.white_list.indexOf(obj.name) >= 0) {
-    debugInfo(['{} 在白名单中不收取他', obj.name])
-    skip = true
-  }
-
-  // 3. 强制关闭保护罩拦截标识，防止 ProtectDetect 假死阻碍能量收取
-  this.isProtected = false
-  this.isProtectDetectDone = true
-
-  if (skip) {
-    return true // 白名单跳过，但返回 true 继续上划
-  }
-
-  if (this.first_check) {
-    if (_widgetUtils.checkAndUseDuplicateCard) {
-      _widgetUtils.checkAndUseDuplicateCard()
-    }
-    this.first_check = false
-  }
-
-  // 4. 【核心修复】直接调用底层 BaseScanner 的能量识别与收取方法
-  try {
-    debugInfo('正在扫描并收取能量球...')
-    this.doCollectTargetFriend(obj)
-  } catch (e) {
-    warnInfo('能量收取过程遭遇异常: ' + e)
-  }
-
-  // 5. 记录重复统计
-  if (!this.collect_any) {
-    this.duplicateChecker.pushIntoDuplicated(obj)
-  } else {
-    this.duplicateChecker.resetAll()
-  }
-
-  // 强制返回 true，确保 while 循环能走到下一步执行上划切换
-  return true
-}
-
-StrollScanner.prototype.checkDailyReward = function () {
-  if (_commonFunctions.checkStrollRewardCollected()) {
-    return
-  }
-  if (localOcrUtil.enabled) {
-    let screen = _commonFunctions.checkCaptureScreenPermission()
-    if (!screen) {
-      errorInfo(['获取截图失败 无法校验每日奖励'])
-      return
-    }
-    let collectPoint = null, collect = null
-    let rewardBtn = localOcrUtil.recognizeWithBounds(screen, null, '领取')
-    if (rewardBtn && rewardBtn.length > 0) {
-      collect = rewardBtn[0].bounds
-      debugInfo('OCR找到了 奖励')
-    }
-    if (collect) {
-      collectPoint = {
-        centerX: collect.centerX(),
-        centerY: collect.centerY()
-      }
-    }
-
-    if (collectPoint) {
-      automator.click(collectPoint.centerX, collectPoint.centerY)
-      _commonFunctions.setStrollRewardCollected()
-    }
-  }
-}
-
-StrollScanner.prototype.checkAndCollectRain = function () {
-  let target = null
-  auto.clearCache && auto.clearCache()
-  if ((target = _widgetUtils.widgetGetOne(_config.rain_entry_content || '.*能量雨.*', 500, true)) != null) {
-    if (_widgetUtils.widgetCheck(_config.home_ui_content, 500)) {
-      warnInfo('找到能量雨开始标志，但是当前依旧在个人首页')
-      return false
-    }
-    if (!_config.collect_rain_when_stroll) {
-      debugInfo('找到能量雨开始标志，但是不需要执行能量雨')
-      return true
-    }
-    if (/已完成/.test(target.content)) {
-      debugInfo('今日能量雨已完成')
-      return true
-    }
-    sleep(1000)
-    debugInfo('找到能量雨开始标志，准备自动执行能量雨脚本')
-    if (/去(收取|拯救)/.test(target.content)) {
-      WarningFloaty.clearAll()
-      automator.clickCenter(target.target)
-      sleep(1000)
-      let source = fileUtils.getCurrentWorkPath() + '/unit/能量雨收集.js'
-      runningQueueDispatcher.doAddRunningTask({ source: source })
-      engines.execScriptFile(source, { path: source.substring(0, source.lastIndexOf('/')), arguments: { executeByStroll: true, executorSource: engines.myEngine().getSource() + '' } })
-      _commonFunctions.commonDelay(2.5, '执行能量雨[', true, true)
-      automator.back()
-    } else {
-      debugInfo('未找到去收取，执行能量雨脚本失败')
-    }
-    this.showCollectSummaryFloaty()
-    return true
-  }
-  return false
-}
-
-StrollScanner.prototype.saveButtonRegionIfNeeded = function () {
-  if (_config.stroll_button_regenerate) {
-    _config.overwrite('stroll_button_left', _config.stroll_button_left)
-    _config.overwrite('stroll_button_top', _config.stroll_button_top)
-    _config.overwrite('stroll_button_width', _config.stroll_button_width)
-    _config.overwrite('stroll_button_height', _config.stroll_button_height)
-    _config.overwrite('stroll_button_regenerate', false)
-    debugInfo(['保存重新生成的逛一逛按钮区域：{}', JSON.stringify([_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height])])
-  }
-}
-
 module.exports = StrollScanner
-
-// inner functions
-function refillStrollInfo (region) {
-  _config.stroll_button_left = parseInt(region[0])
-  _config.stroll_button_top = parseInt(region[1])
-  _config.stroll_button_width = parseInt(region[2])
-  _config.stroll_button_height = parseInt(region[3])
-  _config.stroll_button_regenerate = true
-  debugInfo(['重新生成逛一逛按钮区域：{}', JSON.stringify(region)])
-}
-
-function ocrFindText (screen, text, tryTime) {
-  tryTime = tryTime || 0
-  let ocrCheck = localOcrUtil.recognizeWithBounds(screen, null, text)
-  if (ocrCheck && ocrCheck.length > 0) {
-    return ocrCheck[0]
-  } else {
-    if (--tryTime > 0) {
-      sleep(500)
-      return ocrFindText(screen, text, tryTime)
-    }
-    return null
-  }
-}
-
-function regenerateByYolo (screen) {
-  let yoloCheck = YoloDetection.forward(screen, { labelRegex: 'stroll_btn' })
-  if (yoloCheck && yoloCheck.length > 0) {
-    let bounds = yoloCheck[0]
-    region = [ bounds.x, bounds.y, bounds.width, bounds.height ]
-    refillStrollInfo(region)
-    return true
-  }
-  return false
-}
-
-function regenerateByOcr (screen) {
-  let ocrCheck = ocrFindText(screen, '找能量', 1)
-  if (ocrCheck) {
-    let bounds = ocrCheck.bounds
-    if (!bounds) return false
-    region = [ bounds.left, bounds.top, bounds.width(), bounds.height() ]
-    refillStrollInfo(region)
-    return true
-  }
-  return false
-}
-
-function regenerateByImg (screen) {
-  let configImageFail = false
-  let imagePoint = OpenCvUtil.findByGrayBase64(screen, _config.image_config.stroll_icon)
-  if (!imagePoint) {
-    configImageFail = true
-    imagePoint = OpenCvUtil.findBySIFTGrayBase64(screen, _config.image_config.stroll_icon)
-  }
-  if (imagePoint) {
-    region = [
-      Math.floor(imagePoint.left), Math.floor(imagePoint.top),
-      imagePoint.width(), imagePoint.height()
-    ]
-    if (region[0] + region[2] > _config.device_width) {
-      region[2] = _config.device_width - region[0]
-    }
-    if (region[1] + region[3] > _config.device_height) {
-      region[3] = _config.device_height - region[1]
-    }
-    if (configImageFail) {
-      logInfo(['找到目标区域，截图保存：{}', JSON.stringify(region)])
-      let croppedImage = images.clip(images.cvtColor(images.grayscale(screen), 'GRAY2BGRA'), region[0], region[1], region[2], region[3])
-      _config.overwrite('image_config.stroll_icon', images.toBase64(croppedImage))
-    }
-    refillStrollInfo(region)
-    _commonFunctions.ensureRegionInScreen(region)
-    return true
-  }
-  return false
-}
-
-function regenerateStrollButton () {
-  if (!_config.image_config.stroll_icon && !localOcrUtil.enabled) {
-    warnInfo(['请配置逛一逛按钮图片或者手动指定逛一逛按钮区域'], true)
-    return false
-  }
-  let screen = _commonFunctions.checkCaptureScreenPermission()
-  if (!screen) {
-    errorInfo(['获取截图失败'])
-    return false
-  }
-  YoloTrainHelper.saveImage(screen, '识别逛一逛按钮')
-  let successful = false
-  if (YoloDetection.enabled) {
-    successful = regenerateByYolo(screen)
-  }
-  if (!successful && !(successful = regenerateByOcr(screen))) {
-    successful = regenerateByImg(screen)
-  }
-  return successful
-}
