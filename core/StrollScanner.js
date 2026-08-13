@@ -172,66 +172,32 @@ StrollScanner.prototype.constructor = StrollScanner
  * 极简版好友森林收集逻辑（适用于逛一逛模式）
  */
 StrollScanner.prototype.collectTargetFriend = function () {
-  debugInfo('进入好友森林，开始极简能量检测与收集');
-
-  // 1. 重置收集状态，直接在指定区域检测并收取能量球
-  this.collect_operated = false;
-  
-  // 调用基类的 collectEnergy 方法（会在配置的能量球区域内识别并自动点击）
-  this.collectEnergy(false);
-
-  // 2. 如果检测并操作了能量球
-  if (this.collect_operated) {
-    this.collect_any = true;
-    debugInfo('检测到能量球并完成首次收取');
-
-    // 检测是否使用了双击卡
-    let isDoubleClickCard = _config._double_click_card_used;
-    if (!isDoubleClickCard && _widgetUtils && typeof _widgetUtils.checkIsDuplicateCardUsed === 'function') {
-      isDoubleClickCard = _widgetUtils.checkIsDuplicateCardUsed();
+// 1 & 2. 收集能量与二次兜底（兼容双击卡和网络延迟）
+    logInfo("进入好友森林，开始检测能量球")
+    _base_scanner.collectEnergy(false) // false 表示非自身森林    
+    sleep(500) // 停顿0.5秒    
+    logInfo("执行二次检测，防止漏收或双击卡未收全")
+    _base_scanner.collectEnergy(false)
+    // 4. 判断是否进入了最后的任务界面（逛一逛结束）
+    let endSign = _widgetUtils.widgetGetOne(".*找能量共获得.*", 1000);
+    if (endSign) {
+        logInfo("检测到'找能量共获得'，逛一逛结束")
+        // 这里可以结合原脚本逻辑，执行 automator.back() 或返回特定状态码
+        return false
     }
-
-    // 如果使用了双击卡，隔 0.5 秒再次收取
-    if (isDoubleClickCard) {
-      debugInfo('检测到双击卡，等待 0.5 秒后再次收取');
-      sleep(500);
-      this.collectEnergy(false);
-    }
-
-    // 不管是否使用了双击卡，均再补充收取一次，防止漏收
-    sleep(300);
-    this.collectEnergy(false);
-
-    // 3. 收集完成，执行上划屏幕切换至下一个好友
-    debugInfo('能量收集完毕，上划屏幕');
-    this.swipeToNextFriend();
-
-    // 返回 true 继续逛一逛循环
-    return true;
-
-  } else {
-    // 4. 指定区域内未检测到能量球，退出循环，返回自己的森林
-    debugInfo('指定区域内未检测到能量球，准备退出逛一逛');
-    return false;
-  }
-}
-
-/**
- * 辅助方法：上划屏幕切换到下一个好友
- */
-StrollScanner.prototype.swipeToNextFriend = function () {
-  if (typeof this.randomScrollDown === 'function') {
-    this.randomScrollDown();
-  } else if (automator && typeof automator.randomScrollDown === 'function') {
-    automator.randomScrollDown();
-  } else {
-    // 兜底上滑手势（从屏幕中下部向上滑动）
-    let startY = Math.floor(_config.device_height * 0.7);
-    let endY = Math.floor(_config.device_height * 0.2);
-    let startX = Math.floor(_config.device_width * 0.5);
-    swipe(startX, startY, startX, endY, 300);
-  }
-  sleep(500); // 留出 0.5 秒供页面滑动及加载
+    // 3. 切换到下一个好友
+    logInfo("尝试切换到下一位好友");
+    // 如果确定上划可以切换好友，可以使用 automator 提供的滑动封装
+    // 注意：坐标参数需根据你的设备分辨率按需调整
+    automator.swipe(
+        _config.device_width / 2, 
+        _config.device_height * 0.7, 
+        _config.device_width / 2, 
+        _config.device_height * 0.2, 
+        300
+    )
+    sleep(300) // 给页面加载留出时间
+    return true // 告诉外层 this.collecting 还有下一个，继续循环
 }
 
 StrollScanner.prototype.checkDailyReward = function () {
