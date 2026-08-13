@@ -3,7 +3,6 @@
  * @Date: 2026-08-12 15:30:00
  * @Last Modified by: Sanhom365
  * @Last Modified time: 2026-08-13 10:16:00/*
- * @Author: Custom Refactor
  * @Description: 逛一逛极速收集好友能量脚本
  */
 let { config: _config } = require('../config.js')(runtime, global)
