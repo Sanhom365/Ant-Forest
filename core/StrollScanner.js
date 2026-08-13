@@ -189,18 +189,17 @@ StrollScanner.prototype.constructor = StrollScanner
 StrollScanner.prototype.collectTargetFriend = function () {
   let obj = {}
   debugInfo('等待进入好友主页')
-  let alternativeFriendOrDone = 0
-  if (auto.clearCache) {
-    let start = new Date().getTime()
-    auto.clearCache()
-    debugInfo(['刷新根控件成功: {}ms', (new Date().getTime() - start)])
-  }
+  //if (auto.clearCache) {
+    //let start = new Date().getTime()
+    //auto.clearCache()
+    //debugInfo(['刷新根控件成功: {}ms', (new Date().getTime() - start)])
+  //}
   if (_config.friend_home_check_regex.indexOf('的蚂蚁森林') < 0) {
     _config.overwrite('friend_home_check_regex', _config.friend_home_check_regex + '|.*的蚂蚁森林')
   }
   // 直接判断是否出现了逛完了的标志，替代原先会超时的 alternativeWidget 方法
   // 保留了 _config.stroll_end_ui_content || /找能量共获得.*/ 的判断
-  let strollEndWidget = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 500)
+  let isStrollEnd = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 500)
   if (isStrollEnd) {
         let ended = false
     }
