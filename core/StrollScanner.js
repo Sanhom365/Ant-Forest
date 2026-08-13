@@ -2,7 +2,7 @@
  * @Author: TonyJiangWJ
  * @Date: 2020-09-07 13:06:32
  * @Last Modified by: Sanhom365
- * @Last Modified time: 2026-08-13 17:16:00/*
+ * @Last Modified time: 2026-08-13 17:20:00/*
  * @Description: 逛一逛收集器
  */
 let { config: _config, storage_name: _storage_name } = require('../config.js')(runtime, global)
@@ -189,13 +189,22 @@ StrollScanner.prototype.constructor = StrollScanner
 StrollScanner.prototype.collectTargetFriend = function () {
   let obj = {}
   debugInfo('等待进入好友主页')
-// 1. 优先检测是否到了逛一逛的末尾
-  let isStrollEnd = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 500);
+
+  // 1. 优先检测是否到了逛一逛的末尾
+  let isStrollEnd = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 800)
   if (isStrollEnd) {
     debugInfo('找到了逛一逛结束标志')
     this.checkDailyReward()
+    return false // 真正结束逛一逛
+  }
+
+  // 防御检查：确认是否意外退回了个人首页
+  if (_widgetUtils.widgetCheck(_config.home_ui_content, 300)) {
+    warnInfo('检测到已退回个人首页，终止逛一逛流程')
     return false
   }
+
+  // 2. 获取好友名称（增加兜底逻辑，防止识别失败导致中途退出）
   let name = this.getFriendName()
   if (name) {
     obj.name = name
@@ -212,11 +221,18 @@ StrollScanner.prototype.collectTargetFriend = function () {
     }
     this.lastFriendName = name
   } else {
-    this.checkAndCollectRain()
+    // 【关键修复点】：即使没拿到名字，也不要 return false
+    // 赋予临时名称，保证流程能正常向下执行收取逻辑并划向下一个好友
+    debugInfo('未识别到好友名称，使用兜底名称继续收取')
+    obj.name = '逛一逛好友_' + new Date().getTime()
+  }
+
+  // 3. 检查是否遇到能量雨
+  if (this.checkAndCollectRain()) {
     return false
   }
 
-  // 4. 收取逻辑 (保持不变)
+  // 4. 收取逻辑
   debugInfo('当前在好友页面，开始收取')
   if (this.first_check) {
     _widgetUtils.checkAndUseDuplicateCard()
@@ -231,7 +247,7 @@ StrollScanner.prototype.collectTargetFriend = function () {
   sleep(500)
   this.collectEnergy(false)
 
-  return true // 返回 true，继续下一次循环
+  return true // 返回 true，继续下一次上划循环
 }
 
 StrollScanner.prototype.checkDailyReward = function () {
