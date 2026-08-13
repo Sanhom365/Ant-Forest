@@ -178,13 +178,6 @@ StrollScanner.prototype.collectTargetFriend = function () {
     sleep(500) // 停顿0.5秒    
     logInfo("执行二次检测，防止漏收或双击卡未收全")
     _base_scanner.collectEnergy(false)
-    // 4. 判断是否进入了最后的任务界面（逛一逛结束）
-    let endSign = _widgetUtils.widgetGetOne(".*找能量共获得.*", 1000);
-    if (endSign) {
-        logInfo("检测到'找能量共获得'，逛一逛结束")
-        // 这里可以结合原脚本逻辑，执行 automator.back() 或返回特定状态码
-        return false
-    }
     // 3. 切换到下一个好友
     logInfo("尝试切换到下一位好友");
     // 如果确定上划可以切换好友，可以使用 automator 提供的滑动封装
@@ -197,6 +190,13 @@ StrollScanner.prototype.collectTargetFriend = function () {
         300
     )
     sleep(300) // 给页面加载留出时间
+    // 4. 判断是否进入了最后的任务界面（逛一逛结束）
+    let endSign = _widgetUtils.widgetGetOne(".*找能量共获得.*", 1000);
+    if (endSign) {
+        logInfo("检测到'找能量共获得'，逛一逛结束")
+        // 这里可以结合原脚本逻辑，执行 automator.back() 或返回特定状态码
+        return false
+    }
     return true // 告诉外层 this.collecting 还有下一个，继续循环
 }
 
