@@ -214,12 +214,12 @@ StrollScanner.prototype.collectTargetFriend = function () {
     )
     sleep(300) // 给页面加载留出时间
     // 4. 判断是否进入了最后的任务界面（逛一逛结束）
-    let endSign = _widgetUtils.widgetGetOne(".*找能量共获得.*", 1000);
-    if (endSign) {
-        logInfo("检测到'找能量共获得'，逛一逛结束")
+    //let endSign = _widgetUtils.widgetGetOne(".*找能量共获得.*", 1000);
+    //if (endSign) {
+    //    logInfo("检测到'找能量共获得'，逛一逛结束")
         // 这里可以结合原脚本逻辑，执行 automator.back() 或返回特定状态码
-        return false
-    }
+    //    return false
+    //}
     return true // 告诉外层 this.collecting 还有下一个，继续循环
 }
 
