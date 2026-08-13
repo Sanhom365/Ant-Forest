@@ -96,37 +96,54 @@ const StrollScanner = function () {
    * @return { minCountdown, lostSomeone } if successful
    */
   this.collecting = function () {
-    let hasNext = true
-    let region = null
-    if (_config.stroll_button_left && !_config.stroll_button_regenerate && !this._regenerate_stroll_button) {
-      region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-    } else {
-      let successful = regenerateStrollButton()
-      if (!successful) {
-        warnInfo('自动识别逛一逛按钮失败，请主动配置区域或者图片信息', true)
-        hasNext = false
+    let hasNext = true;
+    let maxLoop = _config.stroll_max_loop || 50; // 防止死循环的安全机制
+    let loopCount = 0;
+  
+    while (hasNext && loopCount < maxLoop) {
+      loopCount++;
+      
+      // 1. 判定当前是在自己的森林还是好友的森林
+      // 假设自己森林里能找到“我的蚂蚁森林”或“去保护”之类独有的控件
+      let isOwnForest = _widgetUtils.widgetGetOne('我的蚂蚁森林|去保护', 1000);
+  
+      if (isOwnForest) {
+        // 在自己的森林：按原逻辑查找“逛一逛”按钮并点击
+        debugInfo(['当前在自己的森林，查找逛一逛按钮']);
+        let strollBtn = _widgetUtils.widgetGetOne('逛一逛', 2000);
+        if (strollBtn) {
+          automator.clickCenter(strollBtn);
+          sleep(1500); // 等待进入好友森林的过渡动画
+        } else {
+          debugInfo(['未找到逛一逛按钮，结束收集']);
+          hasNext = false;
+          break;
+        }
       } else {
-        region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
+        // 在好友的森林：执行上划屏幕功能，进入下一个好友
+        debugInfo(['当前在好友森林，执行上划屏幕进入下一个好友']);
+        // 这里的坐标或滑动方式可以根据原脚本里的 swipe/scroll 调整
+        automator.randomScrollUp(); 
+        sleep(1500); // 等待下一个好友森林加载完成
+      }
+  
+      // 2. 界面切换完成后，执行好友森林收集逻辑
+      let collectStatus = this.collectTargetFriend();
+  
+      // 3. 处理收集结果状态
+      if (collectStatus === 'BACK_TO_HOME') {
+        // 如果因为误入任务界面而回到了主页，继续下一轮循环（下一轮会在 ownForest 逻辑里重新点逛一逛）
+        debugInfo(['已从任务界面返回主页，准备重新进入逛一逛']);
+        continue;
+      } else if (collectStatus === 'COLLECTED') {
+        // 收集完毕，准备在下一次循环中执行上划
+        debugInfo(['当前好友收集完毕']);
+      } else {
+        // 兜底异常处理
+        debugInfo(['收集出现未知情况，结束逛一逛']);
+        hasNext = false;
       }
     }
-    while (hasNext) {
-      if (this.duplicateChecker.checkIsAllDuplicated()) {
-        debugInfo('全部都在白名单，没有可以逛一逛的了')
-        break
-      }
-      debugInfo(['逛下一个, click random region: [{}]', JSON.stringify(region)])
-      this.visualHelper.addRectangle('准备点击下一个', region)
-      WarningFloaty.addRectangle('逛一逛按钮区域', region, '#00ff00')
-      this.visualHelper.displayAndClearAll()
-      // 直接点击中间位置
-      automator.click(region[0] + region[2] / 2, region[1] + region[3] / 2)
-      sleep(300)
-      hasNext = this.collectTargetFriend()
-    }
-    WarningFloaty.clearAll()
-    let result = { regenerate_stroll_button: this._regenerate_stroll_button }
-    Object.assign(result, this.getCollectResult())
-    return result
   }
 
   this.backToListIfNeeded = function (rentery, obj, temp) {
