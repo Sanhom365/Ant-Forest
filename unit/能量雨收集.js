@@ -496,10 +496,10 @@ function openRainPage (reopen) {
     starting = false
     return openRainPage(true)
   }
-  checkAndCloseVibrate()
-  if (executeByTimeTask || executeByAccountChanger) {
-    checkAndStartCollect()
-  }
+  //checkAndCloseVibrate()
+  //if (executeByTimeTask || executeByAccountChanger) {
+    //checkAndStartCollect()
+  //}
   floatyBtnInstance.changeButtonText('openRainPage', '打开能量雨界面')
   floatyBtnInstance.changeButtonStyle('openRainPage', null, '#3FBE7B')
   starting = false
