@@ -51,7 +51,7 @@ exit()
 function fetchAndOpen () {
   LogFloaty.pushLog('请求服务接口获取中，请稍后')
   let disposable = threads.disposable()
-  let defaultCode = 'g:/NabWAyj54mL 或.復-置此消息打开支付宝，鸿抱天天有，好上添好  Q:/L MU5958 2020/04/11'
+  let defaultCode = 'z:/U8ZLJXM45sD 或🏮.f.u.值🏮此消息打开🏮吱怤`bao🏮，分派哄孢，幸福天天见  c:/v HU1002 $790'
   http.get('https://tonyjiang.hatimi.top/mutual-help/announcement?category=hongbao&deviceId=' + device.getAndroidId(), {}, (res, err) => {
     if (err) {
       console.error('请求异常', err)
