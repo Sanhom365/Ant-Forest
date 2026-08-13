@@ -109,7 +109,7 @@ const StrollScanner = function () {
         region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
       }
     }
-    if (hasNext) {
+    while (hasNext) {
       if (this.duplicateChecker.checkIsAllDuplicated()) {
         debugInfo('全部都在白名单，没有可以逛一逛的了')
         break
