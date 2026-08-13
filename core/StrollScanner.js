@@ -2,7 +2,7 @@
  * @Author: Sanhom365
  * @Date: 2026-08-12 15:30:00
  * @Last Modified by: Sanhom365
- * @Last Modified time: 2026-08-13 10:16:00/*
+ * @Last Modified time: 2026-08-13 10:44:00/*
  * @Description: 逛一逛极速收集好友能量脚本
  */
 let { config: _config } = require('../config.js')(runtime, global)
@@ -45,7 +45,7 @@ function StrollScanner() {
     // 点击“逛一逛”进入第一个好友森林
     debugInfo('点击“逛一逛”按钮进入好友森林')
     automator.clickCenter(strollBtn)
-    sleep(1200) // 等待进场动画
+    sleep(300) // 等待进场动画
 
     while (true) {
       // 1. 直接检测指定区域内是否有能量球
@@ -73,7 +73,7 @@ function StrollScanner() {
       // 3. 收集完成后，上划屏幕切到下一个好友
       debugInfo('当前好友收取完成，划向下一个好友')
       this.swipeToNextFriend()
-      sleep(1000) // 等待滑动及加载
+      sleep(300) // 等待滑动及加载
     }
 
     return {
@@ -145,7 +145,7 @@ function StrollScanner() {
    * 查找“逛一逛”按钮
    */
   this.findStrollButton = function () {
-    let btn = _widgetUtils.widgetGetOne(_config.stroll_button_text || '.*逛一逛.*', 1000)
+    let btn = _widgetUtils.widgetGetOne(_config.stroll_button_text || '.*逛一逛.*', 300)
     return btn
   }
 
@@ -154,7 +154,7 @@ function StrollScanner() {
    */
   this.swipeToNextFriend = function () {
     let startX = Math.floor(_config.device_width * 0.5)
-    let startY = Math.floor(_config.device_height * 0.8)
+    let startY = Math.floor(_config.device_height * 0.6)
     let endY = Math.floor(_config.device_height * 0.2)
     automator.swipe(startX, startY, startX, endY, 300)
   }
