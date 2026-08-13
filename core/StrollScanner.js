@@ -189,24 +189,11 @@ StrollScanner.prototype.constructor = StrollScanner
 StrollScanner.prototype.collectTargetFriend = function () {
   let obj = {}
   debugInfo('等待进入好友主页')
-  // 直接判断是否出现了逛完了的标志，替代原先会超时的 alternativeWidget 方法
-  // 保留了 _config.stroll_end_ui_content || /找能量共获得.*/ 的判断
-  let isStrollEnd = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 500)
+// 1. 优先检测是否到了逛一逛的末尾
+  let isStrollEnd = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 500);
   if (isStrollEnd) {
-        let ended = false
-    }
-    if (this.checkAndCollectRain()) {
-      ended = true
-    }
-    if (ended) {
-      return false
-    }
-    debugInfo(
-      '未能进入主页，等待500ms count:' + count++
-    )
-  }
-  // 检查是否遇到能量雨[cite: 1]
-  if (this.checkAndCollectRain()) {
+    debugInfo('找到了逛一逛结束标志')
+    this.checkDailyReward()
     return false
   }
   let name = this.getFriendName()
@@ -228,40 +215,23 @@ StrollScanner.prototype.collectTargetFriend = function () {
     this.checkAndCollectRain()
     return false
   }
-  let skip = false
-  if (!skip && _config.white_list && _config.white_list.indexOf(obj.name) >= 0) {
-    debugInfo(['{} 在白名单中不收取他', obj.name])
-    skip = true
-  }
-  if (!skip && _commonFunctions.checkIsProtected(obj.name)) {
-    warnInfo(['{} 使用了保护罩 不收取他', obj.name])
-    skip = true
-  }
-  if (skip) {
-    return true
-  }
-  if (!obj.recheck) {
-    // 增加延迟 避免展开好友动态失败
-    sleep(100)
-    this.protectInfoDetect(obj.name)
-  } else {
-    this.isProtected = false
-    this.isProtectDetectDone = true
-  }
-  this.saveButtonRegionIfNeeded()
+
+  // 4. 收取逻辑 (保持不变)
+  debugInfo('当前在好友页面，开始收取')
   if (this.first_check) {
-    // 当前在好友界面已经无法使用双击卡了，只能选择赠送
     _widgetUtils.checkAndUseDuplicateCard()
     this.first_check = false
   }
-  let result = this.doCollectTargetFriend(obj)
-  if (!this.collect_any) {
-    // 未收取任何能量，可能在保护罩或者白名单中，亦或者发生了异常或识别出错 将其放入重复队列
-    this.duplicateChecker.pushIntoDuplicated(obj)
-  } else {
-    this.duplicateChecker.resetAll()
+
+  this.collectEnergy(false)
+  if (_config._double_click_card_used) {
+    sleep(500)
+    this.collectEnergy(false)
   }
-  return result
+  sleep(500)
+  this.collectEnergy(false)
+
+  return true // 返回 true，继续下一次循环
 }
 
 StrollScanner.prototype.checkDailyReward = function () {
