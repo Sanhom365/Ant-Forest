@@ -192,117 +192,62 @@ StrollScanner.prototype = Object.create(BaseScanner.prototype)
 StrollScanner.prototype.constructor = StrollScanner
 
 StrollScanner.prototype.collectTargetFriend = function () {
-  let obj = {}
-  debugInfo('等待进入好友主页')
-  let restartLoop = false
-  let count = 1
-  ///sleep(1000)
-  let alternativeFriendOrDone = 0
+  debugInfo('检查当前页面状态...')
+  
+  // 清理缓存（保留原脚本逻辑）
   if (auto.clearCache) {
     let start = new Date().getTime()
     auto.clearCache()
     debugInfo(['刷新根控件成功: {}ms', (new Date().getTime() - start)])
   }
-  if (_config.friend_home_check_regex.indexOf('的蚂蚁森林') < 0) {
-    _config.overwrite('friend_home_check_regex', _config.friend_home_check_regex + '|.*的蚂蚁森林')
+
+  // 适当等待 1-1.5 秒，确保上划动画结束且能量球加载完毕
+  sleep(1500)
+
+  // 直接判断是否出现了逛完了的标志，替代原先会超时的 alternativeWidget 方法
+  // 保留了 _config.stroll_end_ui_content || /找能量共获得.*/ 的判断
+  let isStrollEnd = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 1000);
+  
+  if (isStrollEnd) {
+    debugInfo('找到了逛一逛结束标志，不再瞎逛')
+    this.checkDailyReward() // 检查并领取奖励
+    return false // 返回 false 表示逛完了，结束外层的 while 循环
   }
-  // 未找到好友首页控件 循环等待三次
-  while ((alternativeFriendOrDone = _widgetUtils.alternativeWidget(_config.friend_home_check_regex, _config.stroll_end_ui_content || /找能量共获得.*/, null, false, null, { algorithm: 'PVDFS' })) !== 1) {
-    // 找到了结束标志信息 停止逛一逛
-    let ended = false
-    if (alternativeFriendOrDone === 2) {
-      debugInfo('逛一逛啥也没有，不再瞎逛')
-      ended = true
-      this.checkDailyReward()
-    }
-    if (this.checkAndCollectRain()) {
-      ended = true
-    }
-    if (ended) {
-      return false
-    }
-    debugInfo(
-      '未能进入主页，等待500ms count:' + count++
-    )
-    sleep(500)
-    if (count >= 3) {
-      if (!this.regenerated_stroll_button) {
-        warnInfo(['可能逛一逛按钮不正确，重新识别'])
-        if (regenerateStrollButton()) {
-          let region = [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height]
-          automator.clickRandomRegion({ left: region[0], top: region[1], width: region[2], height: region[3] })
-          sleep(1000)
-          this.regenerated_stroll_button = true
-          continue
-        }
-      }
-      this._regenerate_stroll_button = true
-      warnInfo('重试超过3次，取消操作')
-      warnInfo(['无法确认是否进入好友主页，请检查`判断是否进入好友首页`的控件文本配置是否正确，当前值：{}', _config.friend_home_check_regex])
-      warnInfo(['或者检查一下逛一逛按钮的位置是否正确，当前按钮区域：{}', JSON.stringify([_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height])])
-      WarningFloaty.addRectangle('逛一逛按钮区域不正确', [_config.stroll_button_left, _config.stroll_button_top, _config.stroll_button_width, _config.stroll_button_height], '#ff0000')
-      WarningFloaty.addText('逛一逛按钮区域不正确', { x: _config.device_width * 0.4, y: _config.device_height * 0.5 }, '#ff0000', 30)
-      restartLoop = true
-      break
-    }
-  }
-  if (restartLoop) {
-    errorInfo('页面流程出错，跳过好友能量收集')
+
+  // 检查是否遇到能量雨[cite: 1]
+  if (this.checkAndCollectRain()) {
     return false
   }
-  let name = this.getFriendName()
-  if (name) {
-    obj.name = name
-    debugInfo(['进入好友[{}]首页成功', obj.name])
-    if (name == this.lastFriendName) {
-      this.duplicateEnterCount = (this.duplicateEnterCount ? this.duplicateEnterCount : 0) + 1
-    } else {
-      this.duplicateEnterCount = 0
-    }
-    if (this.duplicateEnterCount >= 3) {
-      this._regenerate_stroll_button = true
-      warnInfo(['重复卡在一个好友界面，可能逛一逛按钮区域不正确，重新识别'], true)
-      return false
-    }
-    this.lastFriendName = name
-  } else {
-    this.checkAndCollectRain()
-    return false
-  }
-  let skip = false
-  if (!skip && _config.white_list && _config.white_list.indexOf(obj.name) >= 0) {
-    debugInfo(['{} 在白名单中不收取他', obj.name])
-    skip = true
-  }
-  if (!skip && _commonFunctions.checkIsProtected(obj.name)) {
-    warnInfo(['{} 使用了保护罩 不收取他', obj.name])
-    skip = true
-  }
-  if (skip) {
-    return true
-  }
-  if (!obj.recheck) {
-    // 增加延迟 避免展开好友动态失败
-    sleep(100)
-    this.protectInfoDetect(obj.name)
-  } else {
-    this.isProtected = false
-    this.isProtectDetectDone = true
-  }
-  this.saveButtonRegionIfNeeded()
+
+  // 没有结束标志，也没有能量雨，判定当前在好友页面，开始执行收取功能
+  debugInfo('未找到结束标志，认为在好友页面，准备收取能量')
+
+  // 首次检查并使用双击卡（保留原脚本逻辑）[cite: 1]
   if (this.first_check) {
-    // 当前在好友界面已经无法使用双击卡了，只能选择赠送
     _widgetUtils.checkAndUseDuplicateCard()
     this.first_check = false
   }
-  let result = this.doCollectTargetFriend(obj)
-  if (!this.collect_any) {
-    // 未收取任何能量，可能在保护罩或者白名单中，亦或者发生了异常或识别出错 将其放入重复队列
-    this.duplicateChecker.pushIntoDuplicated(obj)
-  } else {
-    this.duplicateChecker.resetAll()
+
+  // 1. 调用原脚本直接检查是否有能量球，有就收
+  // collectEnergy 方法继承自 BaseScanner，传 false 表示当前是好友森林
+  debugInfo('>>> 第1次收取：正常检查并收取')
+  this.collectEnergy(false);
+
+  // 2. 有双击卡就再次收取
+  // _config._double_click_card_used 是 BaseScanner 和 WidgetUtils 中通用的双击卡标志[cite: 3]
+  if (_config._double_click_card_used) {
+    debugInfo('>>> 第2次收取：检测到已使用双击卡，再次执行收取')
+    sleep(500); // 稍微停顿，等待能量球刷新
+    this.collectEnergy(false)
   }
-  return result
+
+  // 3. 之后再收取一次来防漏收
+  debugInfo('>>> 第3次收取：防漏收，执行最后一次兜底收取')
+  sleep(500)
+  this.collectEnergy(false)
+
+  // 本次好友收取完成，返回 true。外层 while 循环接收到 true 后会执行你的上划逻辑进入下一个好友[cite: 1]
+  return true
 }
 
 StrollScanner.prototype.checkDailyReward = function () {
