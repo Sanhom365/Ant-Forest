@@ -2,146 +2,162 @@
  * @Author: Sanhom365
  * @Date: 2026-08-12 15:30:00
  * @Last Modified by: Sanhom365
- * @Last Modified time: 2026-08-13 10:16:00
- * @Description: 极速逛一逛/好友能量收集脚本 (基于区域图像检测)
+ * @Last Modified time: 2026-08-13 10:16:00/*
+ * @Author: Custom Refactor
+ * @Description: 逛一逛极速收集好友能量脚本
  */
 let { config: _config } = require('../config.js')(runtime, global)
 let singletonRequire = require('../lib/SingletonRequirer.js')(runtime, global)
+let _widgetUtils = singletonRequire('WidgetUtils')
 let automator = singletonRequire('Automator')
 let _commonFunctions = singletonRequire('CommonFunction')
-let _widgetUtils = singletonRequire('WidgetUtils')
 let YoloDetection = singletonRequire('YoloDetectionUtil')
+let WarningFloaty = singletonRequire('WarningFloaty')
 let BaseScanner = require('./BaseScanner.js')
 
-function StrollScanner () {
+function StrollScanner() {
   BaseScanner.call(this)
+
+  let self = this
+  this.collect_any = false
 
   this.init = function (option) {
     option = option || {}
     this.current_time = option.currentTime || 0
     this.increased_energy = option.increasedEnergy || 0
+    this.group_execute_mode = option.group_execute_mode || false
   }
 
-  /**
-   * 步骤 1：检测指定的屏幕区域内是否有能量球
-   * 仅检查配置的 tree_collect 区域，不进行任何UI控件/保护罩检测
-   */
-  this.hasEnergyBallInRegion = function () {
-    let screen = _commonFunctions.checkCaptureScreenPermission()
-    if (!screen) return false
-
-    // 获取配置中的能量球收集区域
-    let left = _config.tree_collect_left || 0
-    let top = _config.tree_collect_top || 0
-    let width = _config.tree_collect_width || _config.device_width
-    let height = _config.tree_collect_height || _config.device_height
-
-    if (YoloDetection.enabled) {
-      // YOLO 模型识别
-      let list = YoloDetection.forward(screen, {
-        confidence: _config.yolo_confidence || 0.7,
-        filter: (res) => res.label === 'collect' || res.label === 'waterBall'
-      })
-      if (!list || list.length === 0) return false
-
-      // 过滤出落于指定区域内的能量球
-      let valid = list.filter(item => {
-        let cx = item.x + item.width / 2
-        let cy = item.y + item.height / 2
-        return cx >= left && cx <= (left + width) && cy >= top && cy <= (top + height)
-      })
-      return valid.length > 0
-    } else {
-      // Hough 霍夫圆检测
-      let grayImg = images.grayscale(images.medianBlur(screen, 5))
-      let scaleRate = _config.scaleRate || 1
-      let circles = images.findCircles(grayImg, {
-        param1: _config.hough_param1 || 30,
-        param2: _config.hough_param2 || 30,
-        minRadius: parseInt((_config.hough_min_radius || 65) * scaleRate),
-        maxRadius: parseInt((_config.hough_max_radius || 75) * scaleRate),
-        minDst: parseInt((_config.hough_min_dst || 100) * scaleRate)
-      })
-      grayImg.recycle()
-
-      if (!circles || circles.length === 0) return false
-
-      // 过滤指定区域
-      let valid = circles.filter(c => {
-        return c.x >= left && c.x <= (left + width) && c.y >= top && c.y <= (top + height)
-      })
-      return valid.length > 0
-    }
-  }
-
-  /**
-   * 步骤 2：执行收取逻辑
-   */
-  this.doCollectExecution = function () {
-    // 1) 首次收取所有可以收的能量球
-    this.collectEnergy(false)
-
-    // 2) 检测是否使用了双击卡
-    let isDoubleCard = _config._double_click_card_used || _widgetUtils.checkIsDuplicateCardUsed()
-    if (isDoubleCard) {
-      sleep(500)
-      this.collectEnergy(false)
-    }
-
-    // 3) 不管是否使用了双击卡，隔 0.5 秒再收取一次避免漏收
-    sleep(500)
-    this.collectEnergy(false)
-  }
-
-  /**
-   * 步骤 3：上划屏幕切换到下一个好友
-   */
-  this.swipeToNextFriend = function () {
-    let randomTop = _config.topRange() || {}
-    let randomBottom = _config.bottomRange() || {}
-
-    let startY = randomTop.start || parseInt(_config.device_height * 0.75)
-    let endY = randomBottom.end || parseInt(_config.device_height * 0.25)
-
-    automator.randomScrollDown(
-      startY,
-      startY + 50,
-      endY,
-      endY + 50
-    )
-    // 稍微等待滑动动画及界面稳定
-    sleep(600)
-  }
-
-  /**
-   * 核心主循环
-   */
   this.start = function () {
-    logInfo('开始极速逛一逛收取好友能量...')
-    this.collect_any = false
+    debugInfo('开始“逛一逛”极速收取好友能量...')
+    return this.strollLoop()
+  }
+
+  /**
+   * 逛一逛循环主逻辑
+   */
+  this.strollLoop = function () {
+    let strollBtn = this.findStrollButton()
+    if (!strollBtn) {
+      warnInfo('未找到“逛一逛”按钮，结束逛一逛流程')
+      return { collectAny: this.collect_any, regenerate_stroll_button: true }
+    }
+
+    // 点击“逛一逛”进入第一个好友森林
+    debugInfo('点击“逛一逛”按钮进入好友森林')
+    automator.clickCenter(strollBtn)
+    sleep(1200) // 等待进场动画
 
     while (true) {
-      // 1. 到达好友森林后，直接检测指定区域内是否有能量球
-      let hasBalls = this.hasEnergyBallInRegion()
+      // 1. 直接检测指定区域内是否有能量球
+      let hasBalls = this.checkBallsInRegion()
 
-      if (hasBalls) {
-        // 2. 检测到能量球，按规定流程收取
-        this.doCollectExecution()
-        this.collect_any = true
-
-        // 3. 收集完成后，上划屏幕并循环到下一个好友
-        this.swipeToNextFriend()
-      } else {
-        // 4. 如果指定区域检测不到能量球，退出循环，返回自己森林
-        logInfo('指定区域内未检测到可收取能量球，结束逛一逛循环')
+      // 4. 如果指定的屏幕区域检测不到能量球，退出循环，返回自己的森林
+      if (!hasBalls) {
+        logInfo('指定区域内未检测到能量球，准备退出逛一逛回到自己森林')
         break
       }
+
+      // 2. 检测到能量球，去收取所有可以收的能量球
+      this.collectEnergyPure()
+
+      // 检测是否使用了双击卡
+      let isDoubleCard = _widgetUtils.checkIsDuplicateCardUsed() || _config._double_click_card_used
+      
+      // 隔 0.5 秒再次收取（不管是否用了双击卡，为了避免漏收，再收取一次）
+      debugInfo('等待 0.5 秒进行二次补收...')
+      sleep(500)
+      this.collectEnergyPure()
+
+      this.collect_any = true
+
+      // 3. 收集完成后，上划屏幕切到下一个好友
+      debugInfo('当前好友收取完成，划向下一个好友')
+      this.swipeToNextFriend()
+      sleep(1000) // 等待滑动及加载
     }
 
     return {
-      collectAny: this.collect_any,
-      regenerate_stroll_button: false
+      collectAny: this.collect_any
     }
+  }
+
+  /**
+   * 纯净版收集：直接在配置区域内检测并点击，不包含耗时的控件数据刷新与校验
+   */
+  this.collectEnergyPure = function () {
+    if (YoloDetection.enabled) {
+      this.checkAndCollectByYolo(false, null, null, null, 1)
+    } else {
+      this.checkAndCollectByHough(false, null, null, null, 1)
+    }
+  }
+
+  /**
+   * 极速检查指定区域内是否存在可收取能量球
+   */
+  this.checkBallsInRegion = function () {
+    let screen = _commonFunctions.checkCaptureScreenPermission()
+    if (!screen) return false
+
+    if (YoloDetection.enabled) {
+      let rgbImg = images.copy(screen, true)
+      let yoloCheckList = YoloDetection.forward(rgbImg, {
+        confidence: _config.yolo_confidence || 0.85,
+        filter: (result) => result.label == 'collect'
+      })
+      rgbImg.recycle()
+
+      if (!yoloCheckList || yoloCheckList.length === 0) return false
+
+      // 过滤只保留在配置区域内的球
+      let validBalls = this.filterCollectableList(yoloCheckList)
+      return validBalls.length > 0
+    } else {
+      // 霍夫圆检测兜底
+      let grayImgInfo = images.grayscale(images.medianBlur(screen, 5))
+      let findBalls = images.findCircles(grayImgInfo, {
+        param1: _config.hough_param1 || 30,
+        param2: _config.hough_param2 || 30,
+        minRadius: _config.hough_min_radius || parseInt(65 * (_config.scaleRate || 1)),
+        maxRadius: _config.hough_max_radius || parseInt(75 * (_config.scaleRate || 1)),
+        minDst: _config.hough_min_dst || parseInt(100 * (_config.scaleRate || 1))
+      })
+
+      if (!findBalls || findBalls.length === 0) return false
+
+      // 判断是否有在区域内的有效球
+      let validCount = 0
+      findBalls.forEach(ball => {
+        if (
+          ball.y >= _config.tree_collect_top &&
+          ball.y <= _config.tree_collect_top + _config.tree_collect_height &&
+          ball.x >= _config.tree_collect_left &&
+          ball.x <= _config.tree_collect_left + _config.tree_collect_width
+        ) {
+          validCount++
+        }
+      })
+      return validCount > 0
+    }
+  }
+
+  /**
+   * 查找“逛一逛”按钮
+   */
+  this.findStrollButton = function () {
+    let btn = _widgetUtils.widgetGetOne(_config.stroll_button_text || '.*逛一逛.*', 1000)
+    return btn
+  }
+
+  /**
+   * 上划屏幕切换到下一个好友
+   */
+  this.swipeToNextFriend = function () {
+    let startX = Math.floor(_config.device_width * 0.5)
+    let startY = Math.floor(_config.device_height * 0.8)
+    let endY = Math.floor(_config.device_height * 0.2)
+    automator.swipe(startX, startY, startX, endY, 300)
   }
 }
 
