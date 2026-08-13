@@ -200,13 +200,9 @@ StrollScanner.prototype.collectTargetFriend = function () {
   }
   // 直接判断是否出现了逛完了的标志，替代原先会超时的 alternativeWidget 方法
   // 保留了 _config.stroll_end_ui_content || /找能量共获得.*/ 的判断
-  let isStrollEnd = ((alternativeFriendOrDone = _widgetUtils.alternativeWidget(_config.friend_home_check_regex, _config.stroll_end_ui_content || /找能量共获得.*/, null, false, null, { algorithm: 'PVDFS' })) !== 1)
+  let strollEndWidget = _widgetUtils.widgetGetOne(_config.stroll_end_ui_content || /找能量共获得.*/, 500)
   if (isStrollEnd) {
         let ended = false
-    if (alternativeFriendOrDone === 2) {
-      debugInfo('逛一逛啥也没有，不再瞎逛')
-      ended = true
-      this.checkDailyReward()
     }
     if (this.checkAndCollectRain()) {
       ended = true
