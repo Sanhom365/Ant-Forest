@@ -169,7 +169,7 @@ const StrollScanner = function () {
    */
   this.getFriendName = function () {
     let friendNameGettingRegex = _config.friend_name_getting_regex || '(.*)的蚂蚁森林'
-    let titleContainer = _widgetUtils.alternativeWidget(friendNameGettingRegex, _config.stroll_end_ui_content || /找能量共获得.*/, null, true, null, { algorithm: 'PVDFS' })
+    let titleContainer = _widgetUtils.alternativeWidget(friendNameGettingRegex, _config.stroll_end_ui_content || /找能量共获得.*/, 500, true, null, { algorithm: 'PVDFS' })
     if (titleContainer.value === 1) {
       let regex = new RegExp(friendNameGettingRegex)
       if (titleContainer && regex.test(titleContainer.content)) {
